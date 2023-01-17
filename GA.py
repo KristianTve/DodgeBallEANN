@@ -1,4 +1,5 @@
 import random
+import asyncio  # ASYNC Library
 
 import pygad.gann
 import pygad.nn
@@ -44,12 +45,14 @@ def on_generation(ga_instance):
 def on_stop(ga_instance, last_population_fitness):
     print("on_stop()")
 
+
 def end_of_game(self):
     """
     This is called by the C# script to signal end of game.
     :return:
     """
     pass
+
 
 def fitness_function(self, solution):
     """
@@ -65,6 +68,7 @@ def fitness_function(self, solution):
     """
 
     return random.random()
+
 
 """
 Class for the genetic algorithm optimizing neural networks.
@@ -91,10 +95,10 @@ GANN_instance = pygad.gann.GANN(num_solutions=pop_size,
 # Fetching the population weights as vectors
 population_vectors = pygad.gann.population_as_vectors(population_networks=GANN_instance.population_networks)
 
-initial_population = population_vectors.copy()
-num_parents_mating = 2
+initial_population = population_vectors.copy()  # Input for the standard GA
+num_parents_mating = 2  # How many parents used for mating
 num_generations = 100
-mutation_percent_genes = 5
+mutation_percent_genes = 5  # ??
 parent_selection_type = "sss"
 crossover_type = "single_point"
 mutation_type = "random"
@@ -104,18 +108,24 @@ init_range_low = -2
 init_range_high = 5
 
 ga_instance = pygad.GA(num_generations=num_generations,
-                            num_parents_mating=num_parents_mating,
-                            initial_population=initial_population,
-                            fitness_func=fitness_function,
-                            mutation_percent_genes=mutation_percent_genes,
-                            init_range_low=init_range_low,
-                            init_range_high=init_range_high,
-                            parent_selection_type=parent_selection_type,
-                            crossover_type=crossover_type,
-                            mutation_type=mutation_type,
-                            keep_parents=keep_parents,
-                            on_generation=on_generation,
-                            on_start=on_start)
+                       num_parents_mating=num_parents_mating,
+                       initial_population=initial_population,
+                       fitness_func=fitness_function,
+                       mutation_percent_genes=mutation_percent_genes,
+                       init_range_low=init_range_low,
+                       init_range_high=init_range_high,
+                       parent_selection_type=parent_selection_type,
+                       crossover_type=crossover_type,
+                       mutation_type=mutation_type,
+                       keep_parents=keep_parents,
+
+                       on_start=on_start,
+                       on_fitness=on_fitness,
+                       on_parents=on_parents,
+                       on_crossover=on_crossover,
+                       on_mutation=on_mutation,
+                       on_generation=on_generation,
+                       on_stop=on_stop)
 
 
 def algorithm():
@@ -134,4 +144,3 @@ def algorithm():
     # EVALUATE new candidates
     # SELECT individuals for the next generation
     # END
-
