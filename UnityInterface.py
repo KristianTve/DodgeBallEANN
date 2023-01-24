@@ -1,5 +1,6 @@
 import neat
 from mlagents_envs.environment import UnityEnvironment as UE
+from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
 import numpy as np
 import atexit
 
@@ -93,16 +94,24 @@ def run_agent(genomes, config):
                                    decision_steps[0].obs[5]))
 
         action = policies[0].activate(nn_input)  # Works
+        action = np.array(action)  # Convert to ndarray
+        if action[4] > 0.5:
+            action[4] = 1
+        else:
+            action[4] = 0
+
+        if action[5] > 0.5:
+            action[5] = 1
+        else:
+            action[5] = 0
 
         print("ACTIONS CHOSEN:")
         print(action)
 
-        action = spec.action_spec.random_action(1)
-        print("Random Action")
-        print(action.continuous)
-        print(action.discrete)
+        action_tuple = ActionTuple(continuous=np.array([action[0:3]]), discrete=np.array([action[3:5]]))
+
         # Set the actions
-        env.set_actions(behavior_name, action)
+        env.set_actions(behavior_name, action_tuple)
         # Move the simulation forward
         env.step()
         # Get the new simulation results
