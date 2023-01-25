@@ -86,8 +86,12 @@ def run_agent(genomes, config):
 
         if len(decision_steps) > 0:
             for agent_index in agents:
-                if agent_index in decision_steps and agent_index < len(policies):
-                    action = policies[agent_index].activate(nn_input[agent_index])
+                if agent_index in decision_steps:
+                    if agent_index != 0:    # Avoid divide by 0
+                        action = policies[int(agent_index/2)].activate(nn_input[agent_index])  # Since its only partall
+                    else:
+                        action = policies[agent_index].activate(nn_input[agent_index])
+
                     actions[agent_index] = action
 
         # Clip discrete values to 0 or 1
