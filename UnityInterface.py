@@ -9,14 +9,22 @@ import atexit
 env = UE(seed=1, side_channels=[])
 env.reset()  # Resets the environment ready for the next simulation
 show_prints = True
-behavior_name = list(env.behavior_specs)[0]
-spec = env.behavior_specs[behavior_name]
+behavior_name_purple = list(env.behavior_specs)[0]
+behavior_name_blue = list(env.behavior_specs)[1]
+
+spec_purple = env.behavior_specs[behavior_name_purple]
+spec_blue = env.behavior_specs[behavior_name_blue]
+
 generation = 0
 
 if show_prints:
-    print(f"Name of the behavior : {behavior_name}")
-    print("Number of observations : ", len(spec.observation_specs))
-    print(spec.observation_specs[0].observation_type)
+    print(f"Name of the behavior : {behavior_name_purple}")
+    print("Number of observations : ", len(spec_purple.observation_specs))
+    print(spec_purple.observation_specs[0].observation_type)
+
+    print(f"Name of the behavior for players : {behavior_name_blue}")
+    print("Number of observations : ", len(spec_blue.observation_specs))
+    print(spec_blue.observation_specs[0].observation_type)
 
 
 # Handles the exit by closing the unity environment to avoid _communicator errors.
@@ -38,11 +46,14 @@ def run_agent(genomes, config):
     # TODO NEAT REQUIRE RUN TO BE ONE EPISODE ONLY
     # Decision Steps is a list of all agents requesting a decision
     # Terminal steps is all agents that has reached a terminal state (finished)
-    decision_steps, terminal_steps = env.get_steps(behavior_name)
+    decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
+    decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
 
     # Empty array to save all the neural networks for the (two) agents
     # TODO Should two networks from the same generation play against each other?
     # TODO Otherwise a solution can be picked randomly to play against and only implement logic for one agent here.
+    # TODO For training against a fixed policy, one could just employ one policy
+    #      for the selection of actions for the blue agents
     policies = []
 
     # Initialize the neural networks for each genome.
@@ -52,13 +63,18 @@ def run_agent(genomes, config):
         # Key (ID)
         # Fitness (score)
         # Nodes and connections
+        # i starts at 1
         policy = neat.nn.FeedForwardNetwork.create(g, config)
         policies.append(policy)
         g.fitness = 0
 
     if show_prints:
-        print(list(decision_steps))
-        print(list(terminal_steps))
+        print("Purple steps:")
+        print(list(decision_steps_purple))
+        print(list(terminal_steps_purple))
+        print("\nBlue steps:")
+        print(list(decision_steps_blue))
+        print(list(terminal_steps_blue))
 
     global generation
     generation += 1
@@ -66,70 +82,87 @@ def run_agent(genomes, config):
     total_reward = 0
 
     # Agents:
-    agent_count = len(decision_steps.agent_id)  #
+    agent_count_purple = len(decision_steps_purple.agent_id)  # 12
+    agent_count_blue = len(decision_steps_blue.agent_id)  # 12
+    agent_count = agent_count_purple + agent_count_blue     # 24
+
     removed_agents = []
 
     while not done:
-        agents = list(decision_steps)  # Agent IDs that are alive
+        agents_purple = list(decision_steps_purple)  # Agent IDs that are alive
+        agents_blue = list(decision_steps_blue)  # Agent IDs that are alive
 
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
-        actions = np.zeros(shape=(23, 5))  # 23 in size because of the agent IDs going up to 22.
+        actions = np.zeros(shape=(24, 5))  # 23 in size because of the agent IDs going up to 22.
 
         # Concatenate all the data BESIDES number 3 (OtherAgentsData)
-        nn_input = np.zeros(shape=(23, 364))  # 23 in size because of the agent IDs going up to 22.
+        nn_input = np.zeros(shape=(24, 364))  # 23 in size because of the agent IDs going up to 22.
 
-        for agent in agents:  # Collect observations from the agents requesting input
-            nn_input[agent] = np.concatenate((decision_steps[agent].obs[0],
-                                              decision_steps[agent].obs[1],
-                                              decision_steps[agent].obs[3],
-                                              decision_steps[agent].obs[4],
-                                              decision_steps[agent].obs[5]))
+        for agent in range(agent_count):  # Collect observations from the agents requesting input
+            decision_steps_nn = []
+            if agent % 2 == 0 or agent == 0:
+                decision_steps_nn = decision_steps_purple   # Purple agent
+            else:
+                decision_steps_nn = decision_steps_blue # Blue agent
 
-        if len(decision_steps) > 0:
-            for agent_index in agents:
-                if agent_index in decision_steps:
-                    if agent_index != 0:    # Avoid divide by 0
-                        action = policies[int(agent_index/2)].activate(nn_input[agent_index])  # Since its only partall
-                    else:
-                        action = policies[agent_index].activate(nn_input[agent_index])
+            nn_input[agent] = np.concatenate((decision_steps_nn[agent].obs[0],
+                                              decision_steps_nn[agent].obs[1],
+                                              decision_steps_nn[agent].obs[3],
+                                              decision_steps_nn[agent].obs[4],
+                                              decision_steps_nn[agent].obs[5]))
 
-                    actions[agent_index] = action
+        # Checks if the
+        if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
+            for agent_index in range(agent_count):  # Iterates through all the agent indexes
+                if (agent_index in decision_steps_purple) or (agent_index in decision_steps_blue):  # Is agent ready?
+                    action = policies[agent_index].activate(nn_input[agent_index])  # FPass for purple action
+                    actions[agent_index] = action   # Save action in array of actions
 
         # Clip discrete values to 0 or 1
-        for agent in agents:
+        for agent in range(agent_count):
             actions[agent, 3] = 1 if actions[agent, 3] > 0 else 0   # Shoot
             actions[agent, 4] = 1 if actions[agent, 4] > 0 else 0   # DASH
 
-
         # Set actions for each agent (convert from ndarray to ActionTuple)
-        if len(decision_steps.agent_id) != 0:
-            for agent in agents:
+        if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
+            for agent in range(agent_count):
+                # Creating a action tuple
                 continuous_actions = [actions[agent, 0:3]]
                 discrete_actions = [actions[agent, 3:5]]
                 action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
-                env.set_action_for_agent(behavior_name=behavior_name, agent_id=agent, action=action_tuple)
+
+                # Applying the action to respective agents on both teams
+                if agent % 2 == 0 or agent == 0:
+                    env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=agent, action=action_tuple)
+                else:
+                    env.set_action_for_agent(behavior_name=behavior_name_blue, agent_id=agent, action=action_tuple)
 
         # Move the simulation forward
         env.step()
 
         # Get the new simulation results
-        decision_steps, terminal_steps = env.get_steps(behavior_name)
-        reward = 0
-        # Collect reward
-        for agent_index in agents:
-            if agent_index in decision_steps:  # The agent requested a decision
-                reward += decision_steps[agent_index].reward
-            elif agent_index in terminal_steps:
-                reward += terminal_steps[agent_index].reward
+        decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
+        decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
 
-            if agent_index != 0:
-                genomes[int(agent_index/2)][1].fitness += reward
+        # Collect reward
+        reward = 0
+        for agent_index in range(agent_count):
+            if agent_index % 2 == 0 or agent_index == 0:
+                if agent_index in decision_steps_purple:  # The agent requested a decision
+                    reward += decision_steps_purple[agent_index].reward
+                elif agent_index in terminal_steps_purple:
+                    reward += terminal_steps_purple[agent_index].reward
             else:
-                genomes[int(agent_index)][1].fitness += reward
+                if agent_index in decision_steps_blue:  # The agent requested a decision
+                    reward += decision_steps_blue[agent_index].reward
+                elif agent_index in terminal_steps_blue:
+                    reward += terminal_steps_blue[agent_index].reward
+
+            genomes[agent_index][1].fitness += reward
             total_reward += reward  # Testing purposes
 
-        # When all agents has reached a terminal state, then the game is over
-        if len(decision_steps) == 0:
+        # When whole teams are eliminated, end the generation.
+        if len(decision_steps_blue) == 0 or len(decision_steps_purple) == 0:
             done = True
 
         # Reward status
