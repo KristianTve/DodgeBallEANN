@@ -95,15 +95,10 @@ def run_agent(genomes, config):
 
         action = policies[0].activate(nn_input)  # Works
         action = np.array(action)  # Convert to ndarray
-        if action[4] > 0.5:
-            action[4] = 1
-        else:
-            action[4] = 0
 
-        if action[5] > 0.5:
-            action[5] = 1
-        else:
-            action[5] = 0
+        # Not elegant lol
+        action[4] = 1 if action[4] > 0 else 0
+        action[5] = 1 if action[5] > 0 else 0
 
         print("ACTIONS CHOSEN:")
         print(action)
