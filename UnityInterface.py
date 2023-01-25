@@ -1,3 +1,5 @@
+import sys
+
 import neat
 from mlagents_envs.environment import UnityEnvironment as UE
 from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
@@ -8,7 +10,7 @@ env = UE(seed=1, side_channels=[])
 
 env.reset()  # Resets the environment ready for the next simulation
 
-show_prints = False
+show_prints = True
 
 behavior_name = list(env.behavior_specs)[0]
 spec = env.behavior_specs[behavior_name]
@@ -69,6 +71,7 @@ def run_agent(genomes, config):
     global generation
     generation += 1
     done = False  # For the tracked_agent
+    total_reward = 0
 
     while not done:
         """
@@ -97,32 +100,43 @@ def run_agent(genomes, config):
         action = np.array(action)  # Convert to ndarray
 
         # Not elegant lol
-        action[4] = 1 if action[4] > 0 else 0
-        action[5] = 1 if action[5] > 0 else 0
+        action[4] = 1 if action[4] > 0 else 0       # DASH
+        action[5] = 1 if action[5] > 0 else 0       # THROW
 
-        print("ACTIONS CHOSEN:")
-        print(action)
+        #action[4] = 0
+        #action[5] = 1
 
-        action_tuple = ActionTuple(continuous=np.array([action[0:3]]), discrete=np.array([action[3:5]]))
+        #print("ACTIONS CHOSEN:")
+        #print(action)
 
         # Set the actions
-        env.set_actions(behavior_name, action_tuple)
+        action_tuple = ActionTuple(continuous=np.array([action[0:3]]), discrete=np.array([action[3:5]]))
+        #env.set_actions(behavior_name, action_tuple)
+
+        action = spec.action_spec.random_action(len(decision_steps))
+        action.add_continuous(np.array([[0.0, 0.0, 0.0]]))
+        env.set_actions(behavior_name, action)
+
         # Move the simulation forward
         env.step()
         # Get the new simulation results
-        """
+
         decision_steps, terminal_steps = env.get_steps(behavior_name)
-        if tracked_agent in decision_steps:  # The agent requested a decision
-            episode_rewards += decision_steps[tracked_agent].reward
-        if tracked_agent in terminal_steps:  # The agent terminated its episode
-            episode_rewards += terminal_steps[tracked_agent].reward
+        if 0 in decision_steps:  # The agent requested a decision
+            total_reward += decision_steps[0].reward
+        if 0 in terminal_steps:  # The agent terminated its episode
+            total_reward += terminal_steps[0].reward
             done = True
-        """
 
-        # TODO IF ANYONE HAS TERMINAL STEPS THEN GAME IS DONE
+        sys.stdout.write("\rReward: %i" % total_reward)
+        sys.stdout.flush()
 
-    env.close()
-    print("Closed environment")
+        if total_reward > 0.0:
+            print("REWARD MANs")
+            print(total_reward)
+
+    env.reset()
+    print("Finished generation")
 
 
 if __name__ == "__main__":
