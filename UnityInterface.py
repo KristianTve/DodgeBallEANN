@@ -67,17 +67,18 @@ def run_agent(genomes, config):
 
     # Agents:
     agent_count = len(decision_steps.agent_id)  #
-    agents = list(decision_steps)  # Agent IDs
     removed_agents = []
 
     while not done:
+        agents = list(decision_steps)  # Agent IDs that are alive
+
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
         actions = np.zeros(shape=(23, 5))  # 23 in size because of the agent IDs going up to 22.
 
         # Concatenate all the data BESIDES number 3 (OtherAgentsData)
         nn_input = np.zeros(shape=(23, 364))  # 23 in size because of the agent IDs going up to 22.
 
-        for agent in list(decision_steps):  # Collect observations from the agents requesting input
+        for agent in agents:  # Collect observations from the agents requesting input
             nn_input[agent] = np.concatenate((decision_steps[agent].obs[0],
                                               decision_steps[agent].obs[1],
                                               decision_steps[agent].obs[3],
@@ -99,6 +100,7 @@ def run_agent(genomes, config):
             actions[agent, 3] = 1 if actions[agent, 3] > 0 else 0   # Shoot
             actions[agent, 4] = 1 if actions[agent, 4] > 0 else 0   # DASH
 
+
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps.agent_id) != 0:
             for agent in agents:
@@ -112,12 +114,22 @@ def run_agent(genomes, config):
 
         # Get the new simulation results
         decision_steps, terminal_steps = env.get_steps(behavior_name)
-
+        reward = 0
         # Collect reward
-        if 0 in decision_steps:  # The agent requested a decision
-            total_reward += decision_steps[0].reward
-        if 0 in terminal_steps:  # The agent terminated its episode
-            total_reward += terminal_steps[0].reward
+        for agent_index in agents:
+            if agent_index in decision_steps:  # The agent requested a decision
+                reward += decision_steps[agent_index].reward
+            elif agent_index in terminal_steps:
+                reward += terminal_steps[agent_index].reward
+
+            if agent_index != 0:
+                genomes[int(agent_index/2)][1].fitness += reward
+            else:
+                genomes[int(agent_index)][1].fitness += reward
+            total_reward += reward  # Testing purposes
+
+        # When all agents has reached a terminal state, then the game is over
+        if len(decision_steps) == 0:
             done = True
 
         # Reward status
