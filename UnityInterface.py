@@ -43,17 +43,14 @@ def run_agent(genomes, config):
     :param config: Configuration files
     :return: Best genome from generation.
     """
-    # TODO NEAT REQUIRE RUN TO BE ONE EPISODE ONLY
     # Decision Steps is a list of all agents requesting a decision
     # Terminal steps is all agents that has reached a terminal state (finished)
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
 
-    # Empty array to save all the neural networks for the (two) agents
-    # TODO Should two networks from the same generation play against each other?
-    # TODO Otherwise a solution can be picked randomly to play against and only implement logic for one agent here.
-    # TODO For training against a fixed policy, one could just employ one policy
-    #      for the selection of actions for the blue agents
+    # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
+    # TODO But that requires only 12 players on one team.
+    # Empty array to save all the neural networks for all agents on both teams
     policies = []
 
     # Initialize the neural networks for each genome.
@@ -68,14 +65,6 @@ def run_agent(genomes, config):
         policies.append(policy)
         g.fitness = 0
 
-    if show_prints:
-        print("Purple steps:")
-        print(list(decision_steps_purple))
-        print(list(terminal_steps_purple))
-        print("\nBlue steps:")
-        print(list(decision_steps_blue))
-        print(list(terminal_steps_blue))
-
     global generation
     generation += 1
     done = False  # For the tracked_agent
@@ -84,7 +73,7 @@ def run_agent(genomes, config):
     # Agents:
     agent_count_purple = len(decision_steps_purple.agent_id)  # 12
     agent_count_blue = len(decision_steps_blue.agent_id)  # 12
-    agent_count = agent_count_purple + agent_count_blue     # 24
+    agent_count = agent_count_purple + agent_count_blue  # 24
 
     removed_agents = []
 
@@ -101,9 +90,9 @@ def run_agent(genomes, config):
         for agent in range(agent_count):  # Collect observations from the agents requesting input
             decision_steps_nn = []
             if agent % 2 == 0 or agent == 0:
-                decision_steps_nn = decision_steps_purple   # Purple agent
+                decision_steps_nn = decision_steps_purple  # Purple agent
             else:
-                decision_steps_nn = decision_steps_blue # Blue agent
+                decision_steps_nn = decision_steps_blue  # Blue agent
 
             nn_input[agent] = np.concatenate((decision_steps_nn[agent].obs[0],
                                               decision_steps_nn[agent].obs[1],
@@ -116,12 +105,12 @@ def run_agent(genomes, config):
             for agent_index in range(agent_count):  # Iterates through all the agent indexes
                 if (agent_index in decision_steps_purple) or (agent_index in decision_steps_blue):  # Is agent ready?
                     action = policies[agent_index].activate(nn_input[agent_index])  # FPass for purple action
-                    actions[agent_index] = action   # Save action in array of actions
+                    actions[agent_index] = action  # Save action in array of actions
 
         # Clip discrete values to 0 or 1
         for agent in range(agent_count):
-            actions[agent, 3] = 1 if actions[agent, 3] > 0 else 0   # Shoot
-            actions[agent, 4] = 1 if actions[agent, 4] > 0 else 0   # DASH
+            actions[agent, 3] = 1 if actions[agent, 3] > 0 else 0  # Shoot
+            actions[agent, 4] = 1 if actions[agent, 4] > 0 else 0  # DASH
 
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
@@ -166,7 +155,9 @@ def run_agent(genomes, config):
             done = True
 
         # Reward status
-        sys.stdout.write("\rReward: %i" % total_reward)
+        sys.stdout.write("\rCollective reward: %d | Blue left: %d | Purple left: %d" % (total_reward,
+                                                                                        len(decision_steps_blue),
+                                                                                        len(decision_steps_purple)))
         sys.stdout.flush()
 
     # Clean the environment for a new generation.
@@ -183,11 +174,13 @@ if __name__ == "__main__":
     # Create core evolution algorithm class
     p = neat.Population(config)
 
+    # For saving checkpoints during training
+    p.add_reporter(neat.Checkpointer(generation_interval=2, filename_prefix="NEAT-checkpoint-"))
+
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
 
     # Run NEAT
-    best_genome = p.run(run_agent, 2)
-
+    best_genome = p.run(run_agent, 50)
