@@ -166,16 +166,22 @@ def run_agent(genomes, config):
 
 
 if __name__ == "__main__":
+    load_from_checkpoint = True
+
     # Set configuration file
     config_path = "./config"
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                 neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
 
     # Create core evolution algorithm class
-    p = neat.Population(config)
+    if load_from_checkpoint:  # Load from checkpoint
+        p = neat.Checkpointer.restore_checkpoint("NEAT-checkpoint-3")
+        print("LOADED FROM CHECKPOINT")
+    else:   # Or generate new initial population
+        p = neat.Population(config)
 
     # For saving checkpoints during training
-    p.add_reporter(neat.Checkpointer(generation_interval=2, filename_prefix="NEAT-checkpoint-"))
+    p.add_reporter(neat.Checkpointer(generation_interval=1, filename_prefix='checkpoints/NEAT-checkpoint-'))
 
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
