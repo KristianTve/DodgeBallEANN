@@ -6,7 +6,13 @@ from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
 import numpy as np
 import atexit
 
-env = UE(seed=1, side_channels=[])
+built_game = False
+
+if built_game:
+    env = UE(seed=1, side_channels=[], file_name="Builds/DodgeBallEnv.app")
+else:
+    env = UE(seed=1, side_channels=[])
+
 env.reset()  # Resets the environment ready for the next simulation
 show_prints = True
 behavior_name_purple = list(env.behavior_specs)[0]
@@ -36,17 +42,40 @@ def exit_handler():
 atexit.register(exit_handler)
 
 
-def run_agent(genomes, config):
+def select_team(agent, purple_obj, blue_obj):
+    """
+    Returns the corresponding object to which team the agent id is in.
+    """
+    decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
+    decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
+    if agent in decision_steps_purple:  # Purple agent
+        return purple_obj
+    elif agent in decision_steps_blue:  # Blue agent
+        return blue_obj
+    else:
+        if (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
+            return None     # Both teams are empty
+        else:
+            print("\nERROR, AGENT NOT ASSIGNED TO ANY TEAM")
+            print("Blue Team: " + str(len(decision_steps_blue)))
+            print("Purple Team: " + str(len(decision_steps_purple)))
+            exit()
+
+
+def run_agent(genomes, cfg):
     """
     Population size is configured as 12 to suit the training environment!
     :param genomes: All the genomes in the current generation.
-    :param config: Configuration files
+    :param cfg: Configuration file
     :return: Best genome from generation.
     """
     # Decision Steps is a list of all agents requesting a decision
     # Terminal steps is all agents that has reached a terminal state (finished)
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
+    print(list(decision_steps_blue))
+    print(list(decision_steps_purple))
+    print("Genomes: " + str(len(genomes)))
 
     # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
     # TODO But that requires only 12 players on one team.
@@ -60,8 +89,8 @@ def run_agent(genomes, config):
         # Key (ID)
         # Fitness (score)
         # Nodes and connections
-        # i starts at 1
-        policy = neat.nn.FeedForwardNetwork.create(g, config)
+        # "i" starts at 1
+        policy = neat.nn.FeedForwardNetwork.create(g, cfg)
         policies.append(policy)
         g.fitness = 0
 
@@ -74,25 +103,17 @@ def run_agent(genomes, config):
     agent_count_purple = len(decision_steps_purple.agent_id)  # 12
     agent_count_blue = len(decision_steps_blue.agent_id)  # 12
     agent_count = agent_count_purple + agent_count_blue  # 24
-
-    removed_agents = []
+    eliminated_agents = []
 
     while not done:
-        agents_purple = list(decision_steps_purple)  # Agent IDs that are alive
-        agents_blue = list(decision_steps_blue)  # Agent IDs that are alive
-
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
         actions = np.zeros(shape=(24, 5))  # 23 in size because of the agent IDs going up to 22.
 
-        # Concatenate all the data BESIDES number 3 (OtherAgentsData)
+        # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
         nn_input = np.zeros(shape=(24, 364))  # 23 in size because of the agent IDs going up to 22.
 
         for agent in range(agent_count):  # Collect observations from the agents requesting input
-            decision_steps_nn = []
-            if agent % 2 == 0 or agent == 0:
-                decision_steps_nn = decision_steps_purple  # Purple agent
-            else:
-                decision_steps_nn = decision_steps_blue  # Blue agent
+            decision_steps_nn = select_team(agent, decision_steps_purple, decision_steps_blue)
 
             nn_input[agent] = np.concatenate((decision_steps_nn[agent].obs[0],
                                               decision_steps_nn[agent].obs[1],
@@ -115,16 +136,14 @@ def run_agent(genomes, config):
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
             for agent in range(agent_count):
-                # Creating a action tuple
+                # Creating an action tuple
                 continuous_actions = [actions[agent, 0:3]]
                 discrete_actions = [actions[agent, 3:5]]
                 action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
 
                 # Applying the action to respective agents on both teams
-                if agent % 2 == 0 or agent == 0:
-                    env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=agent, action=action_tuple)
-                else:
-                    env.set_action_for_agent(behavior_name=behavior_name_blue, agent_id=agent, action=action_tuple)
+                behavior_name = select_team(agent, purple_obj=behavior_name_purple, blue_obj=behavior_name_blue)
+                env.set_action_for_agent(behavior_name=behavior_name, agent_id=agent, action=action_tuple)
 
         # Move the simulation forward
         env.step()
@@ -136,19 +155,17 @@ def run_agent(genomes, config):
         # Collect reward
         reward = 0
         for agent_index in range(agent_count):
-            if agent_index % 2 == 0 or agent_index == 0:
-                if agent_index in decision_steps_purple:  # The agent requested a decision
-                    reward += decision_steps_purple[agent_index].reward
-                elif agent_index in terminal_steps_purple:
-                    reward += terminal_steps_purple[agent_index].reward
-            else:
-                if agent_index in decision_steps_blue:  # The agent requested a decision
-                    reward += decision_steps_blue[agent_index].reward
-                elif agent_index in terminal_steps_blue:
-                    reward += terminal_steps_blue[agent_index].reward
+            decision_steps = select_team(agent_index, decision_steps_purple, decision_steps_blue)
+            terminal_steps = select_team(agent_index, terminal_steps_purple, terminal_steps_blue)
 
-            genomes[agent_index][1].fitness += reward
-            total_reward += reward  # Testing purposes
+            if decision_steps or terminal_steps:    # As long as the game is not quit
+                if agent_index in decision_steps:  # The agent requested a decision
+                    reward += decision_steps[agent_index].reward
+                elif agent_index in terminal_steps:  # The agent is terminated
+                    reward += terminal_steps[agent_index].reward
+
+                genomes[agent_index][1].fitness += reward
+                total_reward += reward  # Testing purposes (console logging)
 
         # When whole teams are eliminated, end the generation.
         if len(decision_steps_blue) == 0 or len(decision_steps_purple) == 0:
@@ -166,7 +183,7 @@ def run_agent(genomes, config):
 
 
 if __name__ == "__main__":
-    load_from_checkpoint = True
+    load_from_checkpoint = False
 
     # Set configuration file
     config_path = "./config"
@@ -175,7 +192,7 @@ if __name__ == "__main__":
 
     # Create core evolution algorithm class
     if load_from_checkpoint:  # Load from checkpoint
-        p = neat.Checkpointer.restore_checkpoint("NEAT-checkpoint-3")
+        p = neat.Checkpointer.restore_checkpoint("checkpoints/NEAT-checkpoint-3")
         print("LOADED FROM CHECKPOINT")
     else:   # Or generate new initial population
         p = neat.Population(config)
