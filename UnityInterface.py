@@ -6,7 +6,7 @@ from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
 import numpy as np
 import atexit
 
-built_game = False
+built_game = True
 
 if built_game:
     env = UE(seed=1, side_channels=[], file_name="Builds/DodgeBallEnv.app")
@@ -76,7 +76,7 @@ def run_agent(genomes, cfg):
     print(list(decision_steps_blue))
     print(list(decision_steps_purple))
     print("Genomes: " + str(len(genomes)))
-
+    print_buffer = ""
     # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
     # TODO But that requires only 12 players on one team.
     # Empty array to save all the neural networks for all agents on both teams
@@ -103,7 +103,6 @@ def run_agent(genomes, cfg):
     agent_count_purple = len(decision_steps_purple.agent_id)  # 12
     agent_count_blue = len(decision_steps_blue.agent_id)  # 12
     agent_count = agent_count_purple + agent_count_blue  # 24
-    eliminated_agents = []
 
     while not done:
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
@@ -169,6 +168,7 @@ def run_agent(genomes, cfg):
 
         # When whole teams are eliminated, end the generation.
         if len(decision_steps_blue) == 0 or len(decision_steps_purple) == 0:
+            print(".")  # Fix print last status before things are reset
             done = True
 
         # Reward status
@@ -183,7 +183,7 @@ def run_agent(genomes, cfg):
 
 
 if __name__ == "__main__":
-    load_from_checkpoint = False
+    load_from_checkpoint = True
 
     # Set configuration file
     config_path = "./config"
@@ -192,13 +192,13 @@ if __name__ == "__main__":
 
     # Create core evolution algorithm class
     if load_from_checkpoint:  # Load from checkpoint
-        p = neat.Checkpointer.restore_checkpoint("checkpoints/NEAT-checkpoint-3")
+        p = neat.Checkpointer.restore_checkpoint("checkpoints/NEAT-checkpoint-88")
         print("LOADED FROM CHECKPOINT")
     else:   # Or generate new initial population
         p = neat.Population(config)
 
     # For saving checkpoints during training
-    p.add_reporter(neat.Checkpointer(generation_interval=1, filename_prefix='checkpoints/NEAT-checkpoint-'))
+    p.add_reporter(neat.Checkpointer(generation_interval=25, filename_prefix='checkpoints/NEAT-checkpoint-'))
 
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
@@ -206,4 +206,4 @@ if __name__ == "__main__":
     p.add_reporter(stats)
 
     # Run NEAT
-    best_genome = p.run(run_agent, 50)
+    best_genome = p.run(run_agent, 100)
