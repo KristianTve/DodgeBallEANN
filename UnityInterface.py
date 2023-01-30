@@ -1,20 +1,24 @@
+import pickle
 import sys
 
 import neat
+import visualize
 from mlagents_envs.environment import UnityEnvironment as UE
 from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
 import numpy as np
 import atexit
 
-built_game = True
+built_game = False
+load_from_checkpoint = True
+checkpoint = "checkpoints/NEAT-checkpoint-4638"
+show_prints = True
 
 if built_game:
-    env = UE(seed=1, side_channels=[], file_name="Builds/DodgeBallEnv.app")
+    env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe", additional_args=['--num-envs', '5'])
 else:
     env = UE(seed=1, side_channels=[])
 
 env.reset()  # Resets the environment ready for the next simulation
-show_prints = True
 behavior_name_purple = list(env.behavior_specs)[0]
 behavior_name_blue = list(env.behavior_specs)[1]
 
@@ -73,9 +77,9 @@ def run_agent(genomes, cfg):
     # Terminal steps is all agents that has reached a terminal state (finished)
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
-    print(list(decision_steps_blue))
-    print(list(decision_steps_purple))
-    print("Genomes: " + str(len(genomes)))
+    #print(list(decision_steps_blue))
+    #print(list(decision_steps_purple))
+    #print("Genomes: " + str(len(genomes)))
     print_buffer = ""
     # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
     # TODO But that requires only 12 players on one team.
@@ -104,16 +108,21 @@ def run_agent(genomes, cfg):
     agent_count_blue = len(decision_steps_blue.agent_id)  # 12
     agent_count = agent_count_purple + agent_count_blue  # 24
 
+    #for i in range(6):  # Which observation is the one we dont want
+    #    decision_steps_nn = select_team(0, decision_steps_purple, decision_steps_blue)
+    #    if decision_steps_nn[0].obs[i].shape == (3, 8):
+    #        print("Obs: "+str(i)+" is other agent obs")
+
+
     while not done:
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
-        actions = np.zeros(shape=(24, 5))  # 23 in size because of the agent IDs going up to 22.
+        actions = np.zeros(shape=(agent_count, 5))  # 23 in size because of the agent IDs going up to 22.
 
         # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
-        nn_input = np.zeros(shape=(24, 364))  # 23 in size because of the agent IDs going up to 22.
+        nn_input = np.zeros(shape=(agent_count, 364))  # 23 in size because of the agent IDs going up to 22.
 
         for agent in range(agent_count):  # Collect observations from the agents requesting input
             decision_steps_nn = select_team(agent, decision_steps_purple, decision_steps_blue)
-
             nn_input[agent] = np.concatenate((decision_steps_nn[agent].obs[0],
                                               decision_steps_nn[agent].obs[1],
                                               decision_steps_nn[agent].obs[3],
@@ -179,12 +188,10 @@ def run_agent(genomes, cfg):
 
     # Clean the environment for a new generation.
     env.reset()
-    print("Finished generation")
+    print("\nFinished generation")
 
 
 if __name__ == "__main__":
-    load_from_checkpoint = True
-
     # Set configuration file
     config_path = "./config"
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -192,7 +199,7 @@ if __name__ == "__main__":
 
     # Create core evolution algorithm class
     if load_from_checkpoint:  # Load from checkpoint
-        p = neat.Checkpointer.restore_checkpoint("checkpoints/NEAT-checkpoint-88")
+        p = neat.Checkpointer.restore_checkpoint(checkpoint)
         print("LOADED FROM CHECKPOINT")
     else:   # Or generate new initial population
         p = neat.Population(config)
@@ -206,4 +213,23 @@ if __name__ == "__main__":
     p.add_reporter(stats)
 
     # Run NEAT
-    best_genome = p.run(run_agent, 100)
+    best_genome = p.run(run_agent, 5000)
+
+    # Save best genome.
+    with open('result/best_genome', 'wb') as f:
+        pickle.dump(best_genome, f)
+
+    print(best_genome)
+
+    visualize.plot_stats(stats, view=True, filename="result/feedforward-fitness.svg")
+    visualize.plot_species(stats, view=True, filename="result/feedforward-speciation.svg")
+
+    node_names = {-1: 'x', -2: 'dx', -3: 'theta', -4: 'dtheta', 0: 'control'}
+    visualize.draw_net(config, best_genome, True, node_names=node_names)
+
+    visualize.draw_net(config, best_genome, view=True, node_names=node_names,
+                       filename="result/best_genome.gv")
+    visualize.draw_net(config, best_genome, view=True, node_names=node_names,
+                       filename="result/best_genome-enabled.gv", show_disabled=False)
+    visualize.draw_net(config, best_genome, view=True, node_names=node_names,
+                       filename="result/best_genome-enabled-pruned.gv", show_disabled=False, prune_unused=True)
