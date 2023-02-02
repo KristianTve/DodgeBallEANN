@@ -10,7 +10,7 @@ import atexit
 
 sim_1_agent = False
 built_game = False
-load_from_checkpoint = True
+load_from_checkpoint = False
 checkpoint = "checkpoints/NEAT-checkpoint-5585"
 show_prints = True
 
@@ -50,26 +50,6 @@ def exit_handler():
 atexit.register(exit_handler)
 
 
-def select_team(agent, purple_obj, blue_obj):
-    """
-    Returns the corresponding object to which team the agent id is in.
-    """
-    decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
-    decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
-    if agent in decision_steps_purple:  # Purple agent
-        return purple_obj
-    elif agent in decision_steps_blue:  # Blue agent
-        return blue_obj
-    else:
-        if (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
-            return None  # Both teams are empty
-        else:
-            print("\nERROR, AGENT NOT ASSIGNED TO ANY TEAM")
-            print("Blue Team: " + str(len(decision_steps_blue)))
-            print("Purple Team: " + str(len(decision_steps_purple)))
-            exit()
-
-
 def run_agent(genomes, cfg):
     """
     Population size is configured as 12 to suit the training environment!
@@ -81,10 +61,17 @@ def run_agent(genomes, cfg):
     # Terminal steps is all agents that has reached a terminal state (finished)
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
-    # print(list(decision_steps_blue))
-    # print(list(decision_steps_purple))
-    # print("Genomes: " + str(len(genomes)))
-    print_buffer = ""
+    decision_steps = list(decision_steps_blue) + list(decision_steps_purple)
+
+    agent_to_local_map = {}   # For mapping the increasing agent_ids to a interval the same size as number of agents
+    local_to_agent_map = {}   # Mapping local index to agent index
+    id_count = 0
+    for step in decision_steps:
+        agent_to_local_map[step] = id_count
+        local_to_agent_map[id_count] = step
+        id_count += 1
+
+
     # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
     # TODO But that requires only 12 players on one team.
     # Empty array to save all the neural networks for all agents on both teams
@@ -108,14 +95,11 @@ def run_agent(genomes, cfg):
     total_reward = 0
 
     # Agents:
-    agent_count_purple = len(decision_steps_purple.agent_id)  # 12
-    agent_count_blue = len(decision_steps_blue.agent_id)  # 12
-    agent_count = agent_count_purple + agent_count_blue  # 24
+    agent_count_purple = len(decision_steps_purple.agent_id)
+    agent_count_blue = len(decision_steps_blue.agent_id)
+    agent_count = agent_count_purple + agent_count_blue
 
-    # for i in range(6):  # Which observation is the one we dont want
-    #    decision_steps_nn = select_team(0, decision_steps_purple, decision_steps_blue)
-    #    if decision_steps_nn[0].obs[i].shape == (3, 8):
-    #        print("Obs: "+str(i)+" is other agent obs")
+    removed_agents = []
 
     while not done:
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
@@ -125,19 +109,24 @@ def run_agent(genomes, cfg):
         nn_input = np.zeros(shape=(agent_count, 364))  # 23 in size because of the agent IDs going up to 22.
 
         for agent in range(agent_count):  # Collect observations from the agents requesting input
-            decision_steps_nn = select_team(agent, decision_steps_purple, decision_steps_blue)
-            nn_input[agent] = np.concatenate((decision_steps_nn[agent].obs[0],
-                                              decision_steps_nn[agent].obs[1],
-                                              decision_steps_nn[agent].obs[3],
-                                              decision_steps_nn[agent].obs[4],
-                                              decision_steps_nn[agent].obs[5]))
+            if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+                if local_to_agent_map[agent] in decision_steps_blue:
+                    decision_steps_nn = decision_steps_blue
+                elif local_to_agent_map[agent] in decision_steps_purple:
+                    decision_steps_nn = decision_steps_purple
 
-        # Checks if the
+                nn_input[agent] = np.concatenate((decision_steps_nn[local_to_agent_map[agent]].obs[0],
+                                                  decision_steps_nn[local_to_agent_map[agent]].obs[1],
+                                                  decision_steps_nn[local_to_agent_map[agent]].obs[3],
+                                                  decision_steps_nn[local_to_agent_map[agent]].obs[4],
+                                                  decision_steps_nn[local_to_agent_map[agent]].obs[5]))
+
+        # Fetches actions by feed forward pass through the NNs
         if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
-            for agent_index in range(agent_count):  # Iterates through all the agent indexes
-                if (agent_index in decision_steps_purple) or (agent_index in decision_steps_blue):  # Is agent ready?
-                    action = policies[agent_index].activate(nn_input[agent_index])  # FPass for purple action
-                    actions[agent_index] = action  # Save action in array of actions
+            for agent in range(agent_count):  # Iterates through all the agent indexes
+                if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+                    action = policies[agent].activate(nn_input[agent])  # FPass for purple action
+                    actions[agent] = action  # Save action in array of actions
 
         # Clip discrete values to 0 or 1
         for agent in range(agent_count):
@@ -147,47 +136,67 @@ def run_agent(genomes, cfg):
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
             for agent in range(agent_count):
-                # Creating an action tuple
-                continuous_actions = [actions[agent, 0:3]]
-                discrete_actions = [actions[agent, 3:5]]
-                action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
+                if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+                    # Creating an action tuple
+                    continuous_actions = [actions[agent, 0:3]]
+                    discrete_actions = [actions[agent, 3:5]]
+                    action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
 
-                # Applying the action to respective agents on both teams
-                behavior_name = select_team(agent, purple_obj=behavior_name_purple, blue_obj=behavior_name_blue)
-                env.set_action_for_agent(behavior_name=behavior_name, agent_id=agent, action=action_tuple)
+                    # Applying the action to respective agents on both teams
+                    if local_to_agent_map[agent] in decision_steps_purple:
+                        env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=local_to_agent_map[agent], action=action_tuple)
+                    elif local_to_agent_map[agent] in decision_steps_blue:
+                        env.set_action_for_agent(behavior_name=behavior_name_blue, agent_id=local_to_agent_map[agent], action=action_tuple)
 
         # Move the simulation forward
-        env.step()
+        env.step()  # Does not mean 1 step in Unity. Runs until next decision step
 
         # Get the new simulation results
         decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
         decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
 
+        # Adding agents that has reached terminal steps to removed agents
+        if terminal_steps_blue:
+            for step in terminal_steps_blue:
+                if step not in removed_agents:
+                    removed_agents.append(step)
+
+        if terminal_steps_purple:
+            for step in terminal_steps_purple:
+                if step not in removed_agents:
+                    removed_agents.append(step)
+
         # Collect reward
         reward = 0
-        for agent_index in range(agent_count):
-            decision_steps = select_team(agent_index, decision_steps_purple, decision_steps_blue)
-            terminal_steps = select_team(agent_index, terminal_steps_purple, terminal_steps_blue)
 
-            if decision_steps or terminal_steps:  # As long as the game is not quit
-                if agent_index in decision_steps:  # The agent requested a decision
-                    reward += decision_steps[agent_index].reward
-                elif agent_index in terminal_steps:  # The agent is terminated
-                    reward += terminal_steps[agent_index].reward
+        for agent in range(agent_count):
+            if (local_to_agent_map[agent] in terminal_steps_blue) or (local_to_agent_map[agent] in terminal_steps_purple):
+                if local_to_agent_map[agent] in terminal_steps_purple:
+                    reward += terminal_steps_purple[local_to_agent_map[agent]].reward
+                if local_to_agent_map[agent] in terminal_steps_blue:
+                    reward += terminal_steps_blue[local_to_agent_map[agent]].reward
 
-                genomes[agent_index][1].fitness += reward
-                total_reward += reward  # Testing purposes (console logging)
+            elif (local_to_agent_map[agent] in decision_steps_blue) or (local_to_agent_map[agent] in decision_steps_purple):
+                if local_to_agent_map[agent] in decision_steps_purple:
+                    reward += decision_steps_purple[local_to_agent_map[agent]].reward
+                if local_to_agent_map[agent] in decision_steps_blue:
+                    reward += decision_steps_blue[local_to_agent_map[agent]].reward
 
-        # When whole teams are eliminated, end the generation.
-        if len(decision_steps_blue) == 0 or len(decision_steps_purple) == 0:
+            genomes[agent][1].fitness += reward
+            total_reward += reward  # Testing purposes (console logging)
+
+        # When whole teams are eliminated, end the generation. Should not be less than half the players left
+        if len(removed_agents) >= agent_count:
             print(".")  # Fix print last status before things are reset
             done = True
 
-        # Reward status
-        sys.stdout.write("\rCollective reward: %d | Blue left: %d | Purple left: %d" % (total_reward,
-                                                                                        len(decision_steps_blue),
-                                                                                        len(decision_steps_purple)))
-        sys.stdout.flush()
+        # If statement is just there to avoid printing out 0 but doesnt work lol
+        if not (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
+            # Reward status
+            sys.stdout.write("\rCollective reward: %d | Blue left: %d | Purple left: %d" % (total_reward,
+                                                                                            len(decision_steps_blue),
+                                                                                            len(decision_steps_purple)))
+            sys.stdout.flush()
 
     # Clean the environment for a new generation.
     env.reset()
@@ -278,7 +287,7 @@ if __name__ == "__main__":
         p.add_reporter(stats)
 
         # Run NEAT
-        best_genome = p.run(run_agent, 500)
+        best_genome = p.run(run_agent, 5000)
 
         # Save best genome.
         with open('result/best_genome.pkl', 'wb') as f:
