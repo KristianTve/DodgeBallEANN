@@ -7,11 +7,12 @@ from mlagents_envs.environment import UnityEnvironment as UE
 from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
 import numpy as np
 import atexit
+import time
 
 sim_1_agent = False
 built_game = False
-load_from_checkpoint = False
-checkpoint = "checkpoints/NEAT-checkpoint-5585"
+load_from_checkpoint = True
+checkpoint = "checkpoints/NEAT-checkpoint-1"
 show_prints = True
 
 if built_game:
@@ -63,14 +64,13 @@ def run_agent(genomes, cfg):
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
     decision_steps = list(decision_steps_blue) + list(decision_steps_purple)
 
-    agent_to_local_map = {}   # For mapping the increasing agent_ids to a interval the same size as number of agents
-    local_to_agent_map = {}   # Mapping local index to agent index
+    agent_to_local_map = {}  # For mapping the increasing agent_ids to a interval the same size as number of agents
+    local_to_agent_map = {}  # Mapping local index to agent index
     id_count = 0
     for step in decision_steps:
         agent_to_local_map[step] = id_count
         local_to_agent_map[id_count] = step
         id_count += 1
-
 
     # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
     # TODO But that requires only 12 players on one team.
@@ -100,8 +100,10 @@ def run_agent(genomes, cfg):
     agent_count = agent_count_purple + agent_count_blue
 
     removed_agents = []
+    unity_not_ready = 0
 
     while not done:
+
         # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
         actions = np.zeros(shape=(agent_count, 5))  # 23 in size because of the agent IDs going up to 22.
 
@@ -109,7 +111,8 @@ def run_agent(genomes, cfg):
         nn_input = np.zeros(shape=(agent_count, 364))  # 23 in size because of the agent IDs going up to 22.
 
         for agent in range(agent_count):  # Collect observations from the agents requesting input
-            if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+            if (local_to_agent_map[agent] in decision_steps_purple) or (
+                    local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
                 if local_to_agent_map[agent] in decision_steps_blue:
                     decision_steps_nn = decision_steps_blue
                 elif local_to_agent_map[agent] in decision_steps_purple:
@@ -120,13 +123,16 @@ def run_agent(genomes, cfg):
                                                   decision_steps_nn[local_to_agent_map[agent]].obs[3],
                                                   decision_steps_nn[local_to_agent_map[agent]].obs[4],
                                                   decision_steps_nn[local_to_agent_map[agent]].obs[5]))
-
+        start = time.time()
         # Fetches actions by feed forward pass through the NNs
         if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
             for agent in range(agent_count):  # Iterates through all the agent indexes
-                if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+                if (local_to_agent_map[agent] in decision_steps_purple) or (
+                        local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
                     action = policies[agent].activate(nn_input[agent])  # FPass for purple action
                     actions[agent] = action  # Save action in array of actions
+        end = time.time()
+        time_spent_activating = (end - start)
 
         # Clip discrete values to 0 or 1
         for agent in range(agent_count):
@@ -136,17 +142,21 @@ def run_agent(genomes, cfg):
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
             for agent in range(agent_count):
-                if (local_to_agent_map[agent] in decision_steps_purple) or (local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
+                if (local_to_agent_map[agent] in decision_steps_purple) or (
+                        local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
                     # Creating an action tuple
                     continuous_actions = [actions[agent, 0:3]]
                     discrete_actions = [actions[agent, 3:5]]
-                    action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
+                    action_tuple = ActionTuple(discrete=np.array(discrete_actions),
+                                               continuous=np.array(continuous_actions))
 
                     # Applying the action to respective agents on both teams
                     if local_to_agent_map[agent] in decision_steps_purple:
-                        env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=local_to_agent_map[agent], action=action_tuple)
+                        env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=local_to_agent_map[agent],
+                                                 action=action_tuple)
                     elif local_to_agent_map[agent] in decision_steps_blue:
-                        env.set_action_for_agent(behavior_name=behavior_name_blue, agent_id=local_to_agent_map[agent], action=action_tuple)
+                        env.set_action_for_agent(behavior_name=behavior_name_blue, agent_id=local_to_agent_map[agent],
+                                                 action=action_tuple)
 
         # Move the simulation forward
         env.step()  # Does not mean 1 step in Unity. Runs until next decision step
@@ -170,13 +180,15 @@ def run_agent(genomes, cfg):
         reward = 0
 
         for agent in range(agent_count):
-            if (local_to_agent_map[agent] in terminal_steps_blue) or (local_to_agent_map[agent] in terminal_steps_purple):
+            if (local_to_agent_map[agent] in terminal_steps_blue) or (
+                    local_to_agent_map[agent] in terminal_steps_purple):
                 if local_to_agent_map[agent] in terminal_steps_purple:
                     reward += terminal_steps_purple[local_to_agent_map[agent]].reward
                 if local_to_agent_map[agent] in terminal_steps_blue:
                     reward += terminal_steps_blue[local_to_agent_map[agent]].reward
 
-            elif (local_to_agent_map[agent] in decision_steps_blue) or (local_to_agent_map[agent] in decision_steps_purple):
+            elif (local_to_agent_map[agent] in decision_steps_blue) or (
+                    local_to_agent_map[agent] in decision_steps_purple):
                 if local_to_agent_map[agent] in decision_steps_purple:
                     reward += decision_steps_purple[local_to_agent_map[agent]].reward
                 if local_to_agent_map[agent] in decision_steps_blue:
@@ -193,10 +205,14 @@ def run_agent(genomes, cfg):
         # If statement is just there to avoid printing out 0 but doesnt work lol
         if not (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
             # Reward status
-            sys.stdout.write("\rCollective reward: %d | Blue left: %d | Purple left: %d" % (total_reward,
-                                                                                            len(decision_steps_blue),
-                                                                                            len(decision_steps_purple)))
+            sys.stdout.write(
+                "\rCollective reward: %d | Blue left: %s | Purple left: %d | Activation Time: %.2f" % (total_reward,
+                                                                                                       len(decision_steps_blue),
+                                                                                                       len(decision_steps_purple),
+                                                                                                       time_spent_activating))
             sys.stdout.flush()
+        else:
+            unity_not_ready += 1
 
     # Clean the environment for a new generation.
     env.reset()
@@ -314,4 +330,3 @@ if __name__ == "__main__":
             print(genome)
 
         run_agent_sim(genome, config)
-
