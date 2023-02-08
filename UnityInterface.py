@@ -5,15 +5,24 @@ import neat
 import visualize
 from mlagents_envs.environment import UnityEnvironment as UE
 from mlagents_envs.base_env import ActionTuple  # Creating a compatible action
+
 import numpy as np
 import atexit
 import time
 
-sim_1_agent = False
-built_game = False
-load_from_checkpoint = True
-checkpoint = "checkpoints/NEAT-checkpoint-1"
-show_prints = True
+# Boolean Toggles
+built_game = False                              # Is the game built into a .exe or .app
+sim_1_agent = False                             # Test out a given genome specified in main.
+show_prints = True                              # Show certain prints during runtime
+load_from_checkpoint = True                     # Load from checkpoint
+fixed_opponent = True                           # Boolean toggle for fixed opponent
+
+# Variables
+max_generations = 1000                          # Max number of generations
+checkpoint = "checkpoints/NEAT-checkpoint-999"  # Checkpoint name
+genome_to_load = 'result/1000 Gen 72 Agent self-play 0 hidden/best_genome.pkl'  # Genome name
+save_genome_dest = 'result/best_genome.pkl'     # Save destination once the algorithm finishes
+fixed_policy = None                             # The actual fixed policy
 
 if built_game:
     env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
@@ -22,6 +31,7 @@ else:
     env = UE(seed=1, side_channels=[])
 
 env.reset()  # Resets the environment ready for the next simulation
+
 behavior_name_purple = list(env.behavior_specs)[0]
 if len(list(env.behavior_specs)) > 1:
     behavior_name_blue = list(env.behavior_specs)[1]
@@ -63,7 +73,10 @@ def run_agent(genomes, cfg):
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
     decision_steps_blue, terminal_steps_blue = env.get_steps(behavior_name_blue)
     decision_steps = list(decision_steps_blue) + list(decision_steps_purple)
+    purple_team = list(decision_steps_purple).copy()
 
+    print(list(decision_steps_blue))
+    print(list(decision_steps_purple))
     agent_to_local_map = {}  # For mapping the increasing agent_ids to a interval the same size as number of agents
     local_to_agent_map = {}  # Mapping local index to agent index
     id_count = 0
@@ -88,6 +101,8 @@ def run_agent(genomes, cfg):
         policy = neat.nn.FeedForwardNetwork.create(g, cfg)
         policies.append(policy)
         g.fitness = 0
+
+    print("Genomes: " + str(len(genomes)))
 
     global generation
     generation += 1
@@ -129,7 +144,12 @@ def run_agent(genomes, cfg):
             for agent in range(agent_count):  # Iterates through all the agent indexes
                 if (local_to_agent_map[agent] in decision_steps_purple) or (
                         local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
-                    action = policies[agent].activate(nn_input[agent])  # FPass for purple action
+
+                    # If fixed opponent, purple is controlled by fixed policy
+                    if (local_to_agent_map[agent] in decision_steps_blue) or not fixed_opponent:
+                        action = policies[agent].activate(nn_input[agent])  # FPass for purple and blue
+                    elif fixed_opponent:
+                        action = fixed_policy.activate(nn_input[agent])
                     actions[agent] = action  # Save action in array of actions
         end = time.time()
         time_spent_activating = (end - start)
@@ -194,8 +214,19 @@ def run_agent(genomes, cfg):
                 if local_to_agent_map[agent] in decision_steps_blue:
                     reward += decision_steps_blue[local_to_agent_map[agent]].reward
 
-            genomes[agent][1].fitness += reward
-            total_reward += reward  # Testing purposes (console logging)
+            if fixed_opponent:  # Add reward as long as the agent is not purple in fixed opponent mode.
+                if not local_to_agent_map[agent] in purple_team:
+                    try:
+                        genomes[agent][1].fitness += reward
+                    except IndexError:  # Bad index
+                        print("\nBAD AGENT: "+str(local_to_agent_map[agent]))
+                        print("\nBAD AGENT local index: "+str(agent))
+                        exit()
+
+                    total_reward += reward  # Testing purposes (console logging)
+            else:
+                genomes[agent][1].fitness += reward
+                total_reward += reward  # Testing purposes (console logging)
 
         # When whole teams are eliminated, end the generation. Should not be less than half the players left
         if len(removed_agents) >= agent_count:
@@ -302,11 +333,17 @@ if __name__ == "__main__":
         stats = neat.StatisticsReporter()
         p.add_reporter(stats)
 
+        if fixed_opponent:
+            # Play against fixed challenge:
+            with open(genome_to_load, "rb") as f:
+                fixed_genome = pickle.load(f)
+                fixed_policy = neat.nn.FeedForwardNetwork.create(fixed_genome, config)
+
         # Run NEAT
-        best_genome = p.run(run_agent, 5000)
+        best_genome = p.run(run_agent, max_generations)
 
         # Save best genome.
-        with open('result/best_genome.pkl', 'wb') as f:
+        with open(save_genome_dest, 'wb') as f:
             pickle.dump(best_genome, f)
 
         print(best_genome)
@@ -325,8 +362,7 @@ if __name__ == "__main__":
                            filename="result/best_genome-enabled-pruned.gv", show_disabled=False, prune_unused=True)
 
     else:
-        with open('result/best_genome.pkl', "rb") as f:
+        with open(genome_to_load, "rb") as f:
             genome = pickle.load(f)
-            print(genome)
 
         run_agent_sim(genome, config)
