@@ -75,8 +75,6 @@ def run_agent(genomes, cfg):
     decision_steps = list(decision_steps_blue) + list(decision_steps_purple)
     purple_team = list(decision_steps_purple).copy()
 
-    print(list(decision_steps_blue))
-    print(list(decision_steps_purple))
     agent_to_local_map = {}  # For mapping the increasing agent_ids to a interval the same size as number of agents
     local_to_agent_map = {}  # Mapping local index to agent index
     id_count = 0
