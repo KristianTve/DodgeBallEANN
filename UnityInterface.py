@@ -11,18 +11,18 @@ import atexit
 import time
 
 # Boolean Toggles
-built_game = False                              # Is the game built into a .exe or .app
-sim_1_agent = False                             # Test out a given genome specified in main.
-show_prints = True                              # Show certain prints during runtime
-load_from_checkpoint = True                     # Load from checkpoint
-fixed_opponent = True                           # Boolean toggle for fixed opponent
+built_game = False  # Is the game built into a .exe or .app
+sim_1_agent = False  # Test out a given genome specified in main.
+show_prints = True  # Show certain prints during runtime
+load_from_checkpoint = True  # Load from checkpoint
+fixed_opponent = True  # Boolean toggle for fixed opponent
 
 # Variables
-max_generations = 1000                          # Max number of generations
-checkpoint = "checkpoints/NEAT-checkpoint-999"  # Checkpoint name
+max_generations = 1000  # Max number of generations
+checkpoint = "checkpoints/NEAT-checkpoint-1013"  # Checkpoint name
 genome_to_load = 'result/1000 Gen 72 Agent self-play 0 hidden/best_genome.pkl'  # Genome name
-save_genome_dest = 'result/best_genome.pkl'     # Save destination once the algorithm finishes
-fixed_policy = None                             # The actual fixed policy
+save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
+fixed_policy = None  # The actual fixed policy
 
 if built_game:
     env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
@@ -83,19 +83,11 @@ def run_agent(genomes, cfg):
         local_to_agent_map[id_count] = step
         id_count += 1
 
-    # TODO Implement a option to run a given neural network for all agents of one team, of which learning is disabled.
-    # TODO But that requires only 12 players on one team.
     # Empty array to save all the neural networks for all agents on both teams
     policies = []
 
     # Initialize the neural networks for each genome.
     for i, g in genomes:
-        # Each agent has their own genome which denotes their phenotype
-        # Genomes consists of properties:
-        # Key (ID)
-        # Fitness (score)
-        # Nodes and connections
-        # "i" starts at 1
         policy = neat.nn.FeedForwardNetwork.create(g, cfg)
         policies.append(policy)
         g.fitness = 0
@@ -124,18 +116,16 @@ def run_agent(genomes, cfg):
         nn_input = np.zeros(shape=(agent_count, 364))  # 23 in size because of the agent IDs going up to 22.
 
         for agent in range(agent_count):  # Collect observations from the agents requesting input
-            if (local_to_agent_map[agent] in decision_steps_purple) or (
-                    local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
-                if local_to_agent_map[agent] in decision_steps_blue:
-                    decision_steps_nn = decision_steps_blue
-                elif local_to_agent_map[agent] in decision_steps_purple:
-                    decision_steps_nn = decision_steps_purple
+            if local_to_agent_map[agent] in decision_steps_purple:
+                decision_steps = decision_steps_purple
+            elif local_to_agent_map[agent] in decision_steps_blue:
+                decision_steps = decision_steps_blue
+            else:
+                continue    # Does not exist in any decision steps, run next agent.
 
-                nn_input[agent] = np.concatenate((decision_steps_nn[local_to_agent_map[agent]].obs[0],
-                                                  decision_steps_nn[local_to_agent_map[agent]].obs[1],
-                                                  decision_steps_nn[local_to_agent_map[agent]].obs[3],
-                                                  decision_steps_nn[local_to_agent_map[agent]].obs[4],
-                                                  decision_steps_nn[local_to_agent_map[agent]].obs[5]))
+            step = decision_steps[local_to_agent_map[agent]]
+            nn_input[agent] = np.concatenate((step.obs[0], step.obs[1], step.obs[3], step.obs[4], step.obs[5]))
+
         start = time.time()
         # Fetches actions by feed forward pass through the NNs
         if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
@@ -149,13 +139,13 @@ def run_agent(genomes, cfg):
                     elif fixed_opponent:
                         action = fixed_policy.activate(nn_input[agent])
                     actions[agent] = action  # Save action in array of actions
+
         end = time.time()
         time_spent_activating = (end - start)
 
         # Clip discrete values to 0 or 1
-        for agent in range(agent_count):
-            actions[agent, 3] = 1 if actions[agent, 3] > 0 else 0  # Shoot
-            actions[agent, 4] = 1 if actions[agent, 4] > 0 else 0  # DASH
+        actions[:, 3] = (actions[:, 3] > 0).astype(int)
+        actions[:, 4] = (actions[:, 4] > 0).astype(int)
 
         # Set actions for each agent (convert from ndarray to ActionTuple)
         if len(decision_steps_purple.agent_id) != 0 and len(decision_steps_blue.agent_id) != 0:
@@ -195,30 +185,27 @@ def run_agent(genomes, cfg):
                     removed_agents.append(step)
 
         # Collect reward
-        reward = 0
-
         for agent in range(agent_count):
-            if (local_to_agent_map[agent] in terminal_steps_blue) or (
-                    local_to_agent_map[agent] in terminal_steps_purple):
-                if local_to_agent_map[agent] in terminal_steps_purple:
-                    reward += terminal_steps_purple[local_to_agent_map[agent]].reward
-                if local_to_agent_map[agent] in terminal_steps_blue:
-                    reward += terminal_steps_blue[local_to_agent_map[agent]].reward
+            local_agent = local_to_agent_map[agent]
+            reward = 0
 
-            elif (local_to_agent_map[agent] in decision_steps_blue) or (
-                    local_to_agent_map[agent] in decision_steps_purple):
-                if local_to_agent_map[agent] in decision_steps_purple:
-                    reward += decision_steps_purple[local_to_agent_map[agent]].reward
-                if local_to_agent_map[agent] in decision_steps_blue:
-                    reward += decision_steps_blue[local_to_agent_map[agent]].reward
+            if local_agent in terminal_steps_purple:
+                reward += terminal_steps_purple[local_agent].reward
+            elif local_agent in decision_steps_purple:
+                reward += decision_steps_purple[local_agent].reward
+
+            if local_agent in terminal_steps_blue:
+                reward += terminal_steps_blue[local_agent].reward
+            elif local_agent in decision_steps_blue:
+                reward += decision_steps_blue[local_agent].reward
 
             if fixed_opponent:  # Add reward as long as the agent is not purple in fixed opponent mode.
-                if not local_to_agent_map[agent] in purple_team:
+                if not (local_agent in purple_team):
                     try:
                         genomes[agent][1].fitness += reward
                     except IndexError:  # Bad index
-                        print("\nBAD AGENT: "+str(local_to_agent_map[agent]))
-                        print("\nBAD AGENT local index: "+str(agent))
+                        print("\nBAD AGENT: " + str(local_to_agent_map[agent]))
+                        print("\nBAD AGENT local index: " + str(agent))
                         exit()
 
                     total_reward += reward  # Testing purposes (console logging)
