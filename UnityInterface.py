@@ -14,11 +14,11 @@ import time
 built_game = False  # Is the game built into a .exe or .app
 sim_1_agent = False  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
-load_from_checkpoint = True  # Load from checkpoint
+load_from_checkpoint = False  # Load from checkpoint
 fixed_opponent = True  # Boolean toggle for fixed opponent
 
 # Variables
-max_generations = 1000  # Max number of generations
+max_generations = 500  # Max number of generations
 checkpoint = "checkpoints/NEAT-checkpoint-1013"  # Checkpoint name
 genome_to_load = 'result/1000 Gen 72 Agent self-play 0 hidden/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
@@ -97,7 +97,7 @@ def run_agent(genomes, cfg):
     global generation
     generation += 1
     done = False  # For the tracked_agent
-    total_reward = 0
+    total_reward = 0.0
 
     # Agents:
     agent_count_purple = len(decision_steps_purple.agent_id)
@@ -121,7 +121,7 @@ def run_agent(genomes, cfg):
             elif local_to_agent_map[agent] in decision_steps_blue:
                 decision_steps = decision_steps_blue
             else:
-                continue    # Does not exist in any decision steps, run next agent.
+                continue  # Does not exist in any decision steps, run next agent.
 
             step = decision_steps[local_to_agent_map[agent]]
             nn_input[agent] = np.concatenate((step.obs[0], step.obs[1], step.obs[3], step.obs[4], step.obs[5]))
@@ -209,6 +209,10 @@ def run_agent(genomes, cfg):
                         exit()
 
                     total_reward += reward  # Testing purposes (console logging)
+                    if reward > 1.9:
+                        print(
+                            "Agent: " + str(agent) + " Fitness: " + str(genomes[agent][1].fitness) + " Reward: " + str(
+                                reward))
             else:
                 genomes[agent][1].fitness += reward
                 total_reward += reward  # Testing purposes (console logging)
@@ -222,10 +226,10 @@ def run_agent(genomes, cfg):
         if not (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
             # Reward status
             sys.stdout.write(
-                "\rCollective reward: %d | Blue left: %s | Purple left: %d | Activation Time: %.2f" % (total_reward,
-                                                                                                       len(decision_steps_blue),
-                                                                                                       len(decision_steps_purple),
-                                                                                                       time_spent_activating))
+                "\rCollective reward: %.2f | Blue left: %s | Purple left: %d | Activation Time: %.2f" % (total_reward,
+                                                                                                         len(decision_steps_blue),
+                                                                                                         len(decision_steps_purple),
+                                                                                                         time_spent_activating))
             sys.stdout.flush()
         else:
             unity_not_ready += 1
