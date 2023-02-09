@@ -14,15 +14,17 @@ import time
 built_game = False  # Is the game built into a .exe or .app
 sim_1_agent = False  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
-load_from_checkpoint = False  # Load from checkpoint
+load_from_checkpoint = True  # Load from checkpoint
 fixed_opponent = True  # Boolean toggle for fixed opponent
 
 # Variables
-max_generations = 500  # Max number of generations
-checkpoint = "checkpoints/NEAT-checkpoint-1013"  # Checkpoint name
-genome_to_load = 'result/1000 Gen 72 Agent self-play 0 hidden/best_genome.pkl'  # Genome name
+max_generations = 100  # Max number of generations
+save_interval = 25
+checkpoint = "checkpoints/NEAT-checkpoint-381"  # Checkpoint name
+genome_to_load = 'result/fixed_challenge400/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
 fixed_policy = None  # The actual fixed policy
+best_genome_current_generation = None   # Continually saving the best genome for training progress when exiting
 
 if built_game:
     env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
@@ -40,6 +42,7 @@ if len(list(env.behavior_specs)) > 1:
 spec_purple = env.behavior_specs[behavior_name_purple]
 
 generation = 0
+global stats
 
 if show_prints:
     print(f"Name of the behavior : {behavior_name_purple}")
@@ -54,6 +57,11 @@ if show_prints:
 
 # Handles the exit by closing the unity environment to avoid _communicator errors.
 def exit_handler():
+    visualize.plot_stats(stats, view=True, filename="result/on_exit/feedforward-fitness.svg")
+    visualize.plot_species(stats, view=True, filename="result/on_exit/feedforward-speciation.svg")
+    # Save best genome.
+    with open('result/on_exit/best_genome.pkl', 'wb') as w:
+        pickle.dump(best_genome_current_generation, w)
     print("EXITING")
     env.close()
 
@@ -105,7 +113,6 @@ def run_agent(genomes, cfg):
     agent_count = agent_count_purple + agent_count_blue
 
     removed_agents = []
-    unity_not_ready = 0
 
     while not done:
 
@@ -231,8 +238,15 @@ def run_agent(genomes, cfg):
                                                                                                          len(decision_steps_purple),
                                                                                                          time_spent_activating))
             sys.stdout.flush()
-        else:
-            unity_not_ready += 1
+
+    # Save the best genome from this generation:
+    global best_genome_current_generation
+    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)   # Save the best genome from this gen
+
+    # Save training progress regularely
+    if generation % save_interval == 0:
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg")
 
     # Clean the environment for a new generation.
     env.reset()
