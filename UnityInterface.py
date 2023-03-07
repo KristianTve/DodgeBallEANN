@@ -1,5 +1,6 @@
 import pickle
 import sys
+import ActionExtractor
 
 import neat
 import visualize
@@ -14,7 +15,7 @@ import time
 built_game = False  # Is the game built into a .exe or .app
 sim_1_agent = False  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
-load_from_checkpoint = True  # Load from checkpoint
+load_from_checkpoint = False  # Load from checkpoint
 fixed_opponent = True  # Boolean toggle for fixed opponent
 
 # Variables
@@ -24,36 +25,10 @@ checkpoint = "checkpoints/NEAT-checkpoint-381"  # Checkpoint name
 genome_to_load = 'result/fixed_challenge400/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
 fixed_policy = None  # The actual fixed policy
-best_genome_current_generation = None   # Continually saving the best genome for training progress when exiting
+best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
 
-if built_game:
-    env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
-             additional_args=['--num-envs', '5'])
-else:
-    env = UE(seed=1, side_channels=[])
-
-env.reset()  # Resets the environment ready for the next simulation
-
-behavior_name_purple = list(env.behavior_specs)[0]
-if len(list(env.behavior_specs)) > 1:
-    behavior_name_blue = list(env.behavior_specs)[1]
-    spec_blue = env.behavior_specs[behavior_name_blue]
-
-spec_purple = env.behavior_specs[behavior_name_purple]
-
-generation = 0
+env = None  # Initializing
 global stats
-
-if show_prints:
-    print(f"Name of the behavior : {behavior_name_purple}")
-    print("Number of observations : ", len(spec_purple.observation_specs))
-    print(spec_purple.observation_specs[0].observation_type)
-
-    if len(list(env.behavior_specs)) > 1:
-        print(f"Name of the behavior for players : {behavior_name_blue}")
-        print("Number of observations : ", len(spec_blue.observation_specs))
-        print(spec_blue.observation_specs[0].observation_type)
-
 
 # Handles the exit by closing the unity environment to avoid _communicator errors.
 def exit_handler():
@@ -76,6 +51,7 @@ def run_agent(genomes, cfg):
     :param cfg: Configuration file
     :return: Best genome from generation.
     """
+
     # Decision Steps is a list of all agents requesting a decision
     # Terminal steps is all agents that has reached a terminal state (finished)
     decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
@@ -134,20 +110,26 @@ def run_agent(genomes, cfg):
             nn_input[agent] = np.concatenate((step.obs[0], step.obs[1], step.obs[3], step.obs[4], step.obs[5]))
 
         start = time.time()
-        # Fetches actions by feed forward pass through the NNs
-        if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
-            for agent in range(agent_count):  # Iterates through all the agent indexes
-                if (local_to_agent_map[agent] in decision_steps_purple) or (
-                        local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
 
-                    # If fixed opponent, purple is controlled by fixed policy
-                    if (local_to_agent_map[agent] in decision_steps_blue) or not fixed_opponent:
-                        action = policies[agent].activate(nn_input[agent])  # FPass for purple and blue
-                    elif fixed_opponent:
-                        action = fixed_policy.activate(nn_input[agent])
-                    actions[agent] = action  # Save action in array of actions
+        # Concurrency things
+        q = ActionExtractor.get_actions(policies=policies,
+                                        fixed_policy=fixed_policy,
+                                        fixed_opponent=fixed_opponent,
+                                        nn_input=nn_input,
+                                        decision_steps_blue=decision_steps_blue,
+                                        decision_steps_purple=decision_steps_purple,
+                                        agent_count=agent_count,
+                                        local_to_agent_map=local_to_agent_map)
 
+        #print(q.get())
         end = time.time()
+        print(end - start)
+        # exit()
+
+        # Extract the
+
+        # actions[agent] = action  # Save action in array of actions
+
         time_spent_activating = (end - start)
 
         # Clip discrete values to 0 or 1
@@ -241,7 +223,7 @@ def run_agent(genomes, cfg):
 
     # Save the best genome from this generation:
     global best_genome_current_generation
-    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)   # Save the best genome from this gen
+    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)  # Save the best genome from this gen
 
     # Save training progress regularely
     if generation % save_interval == 0:
@@ -316,6 +298,35 @@ def run_agent_sim(genome, cfg):
 
 
 if __name__ == "__main__":
+    if built_game:
+        env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
+                 additional_args=['--num-envs', '5'])
+    else:
+        env = UE(seed=1, side_channels=[])
+
+    env.reset()  # Resets the environment ready for the next simulation
+
+    behavior_name_purple = list(env.behavior_specs)[0]
+    if len(list(env.behavior_specs)) > 1:
+        behavior_name_blue = list(env.behavior_specs)[1]
+        spec_blue = env.behavior_specs[behavior_name_blue]
+
+    spec_purple = env.behavior_specs[behavior_name_purple]
+
+    generation = 0
+    global stats
+
+    if show_prints:
+        print(f"Name of the behavior : {behavior_name_purple}")
+        print("Number of observations : ", len(spec_purple.observation_specs))
+        print(spec_purple.observation_specs[0].observation_type)
+
+        if len(list(env.behavior_specs)) > 1:
+            print(f"Name of the behavior for players : {behavior_name_blue}")
+            print("Number of observations : ", len(spec_blue.observation_specs))
+            print(spec_blue.observation_specs[0].observation_type)
+
+
     # Set configuration file
     config_path = "./config"
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
