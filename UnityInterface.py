@@ -12,23 +12,23 @@ import time
 
 # Boolean Toggles
 built_game = False  # Is the game built into a .exe or .app
-sim_1_agent = False  # Test out a given genome specified in main.
+sim_1_agent = True  # Test out a given genome specified below.
 show_prints = True  # Show certain prints during runtime
 load_from_checkpoint = True  # Load from checkpoint
 fixed_opponent = True  # Boolean toggle for fixed opponent
 
 # Variables
-max_generations = 100  # Max number of generations
-save_interval = 25
-checkpoint = "checkpoints/NEAT-checkpoint-381"  # Checkpoint name
-genome_to_load = 'result/fixed_challenge400/best_genome.pkl'  # Genome name
+max_generations = 1  # Max number of generations
+save_interval = 50
+
+checkpoint = "checkpoints/NEAT-checkpoint-3022"  # Checkpoint name
+genome_to_load = 'result/3022gen/best_genome.pkl'  # Genome name (challenge)
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
 fixed_policy = None  # The actual fixed policy
-best_genome_current_generation = None   # Continually saving the best genome for training progress when exiting
+best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
 
 if built_game:
-    env = UE(seed=1, side_channels=[], file_name="Builds/5ENVSIMPLE/DodgeBallEnv.exe",
-             additional_args=['--num-envs', '5'])
+    env = UE(seed=1, worker_id=5, side_channels=[], file_name="Builds/144AgentsBush/DodgeBallEnv.exe")
 else:
     env = UE(seed=1, side_channels=[])
 
@@ -113,6 +113,7 @@ def run_agent(genomes, cfg):
     agent_count = agent_count_purple + agent_count_blue
 
     removed_agents = []
+    purple_wins = 0
 
     while not done:
 
@@ -218,8 +219,11 @@ def run_agent(genomes, cfg):
                     total_reward += reward  # Testing purposes (console logging)
                     if reward > 1.9:
                         print(
-                            "Agent: " + str(agent) + " Fitness: " + str(genomes[agent][1].fitness) + " Reward: " + str(
+                            " - Agent: " + str(agent) + " Fitness: " + str(
+                                genomes[agent][1].fitness) + " Reward: " + str(
                                 reward))
+                    if reward > 0.2:
+                        purple_wins += 1
             else:
                 genomes[agent][1].fitness += reward
                 total_reward += reward  # Testing purposes (console logging)
@@ -233,18 +237,21 @@ def run_agent(genomes, cfg):
         if not (len(decision_steps_blue) + len(decision_steps_purple)) == 0:
             # Reward status
             sys.stdout.write(
-                "\rCollective reward: %.2f | Blue left: %s | Purple left: %d | Activation Time: %.2f" % (total_reward,
-                                                                                                         len(decision_steps_blue),
-                                                                                                         len(decision_steps_purple),
-                                                                                                         time_spent_activating))
+                "\rCollective reward: %.2f | Blue left: %s | Purple left: %d (%d WINS) | Activation Time: %.2f" % (
+                    total_reward,
+                    len(decision_steps_blue),
+                    len(decision_steps_purple),
+                    purple_wins,
+                    time_spent_activating))
             sys.stdout.flush()
 
     # Save the best genome from this generation:
     global best_genome_current_generation
-    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)   # Save the best genome from this gen
+    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)  # Save the best genome from this gen
 
     # Save training progress regularely
     if generation % save_interval == 0:
+        print("\nSAVED PLOTS | GENERATION " + str(generation))
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg")
 
@@ -328,8 +335,8 @@ if __name__ == "__main__":
         else:  # Or generate new initial population
             p = neat.Population(config)
 
-        # For saving checkpoints during training
-        p.add_reporter(neat.Checkpointer(generation_interval=25, filename_prefix='checkpoints/NEAT-checkpoint-'))
+        # For saving checkpoints during training    Every 25th generation or 20 minutes
+        p.add_reporter(neat.Checkpointer(generation_interval=25, time_interval_seconds=1200, filename_prefix='checkpoints/NEAT-checkpoint-'))
 
         # Add reporter for fancy statistical result
         p.add_reporter(neat.StdOutReporter(True))
