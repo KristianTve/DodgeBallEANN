@@ -12,17 +12,17 @@ import time
 
 # Boolean Toggles
 built_game = False  # Is the game built into a .exe or .app
-sim_1_agent = True  # Test out a given genome specified below.
+sim_1_agent = False  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
 load_from_checkpoint = True  # Load from checkpoint
 fixed_opponent = True  # Boolean toggle for fixed opponent
+ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
-max_generations = 1  # Max number of generations
-save_interval = 50
-
-checkpoint = "checkpoints/NEAT-checkpoint-3022"  # Checkpoint name
-genome_to_load = 'result/3022gen/best_genome.pkl'  # Genome name (challenge)
+max_generations = 100  # Max number of generations
+save_interval = 25
+checkpoint = "checkpoints/NEAT-checkpoint-381"  # Checkpoint name
+genome_to_load = 'result/3022gen/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
 fixed_policy = None  # The actual fixed policy
 best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
@@ -135,18 +135,16 @@ def run_agent(genomes, cfg):
             nn_input[agent] = np.concatenate((step.obs[0], step.obs[1], step.obs[3], step.obs[4], step.obs[5]))
 
         start = time.time()
-        # Fetches actions by feed forward pass through the NNs
-        if (len(decision_steps_purple) > 0) and (len(decision_steps_blue) > 0):  # More steps to take?
-            for agent in range(agent_count):  # Iterates through all the agent indexes
-                if (local_to_agent_map[agent] in decision_steps_purple) or (
-                        local_to_agent_map[agent] in decision_steps_blue):  # Is agent ready?
 
-                    # If fixed opponent, purple is controlled by fixed policy
-                    if (local_to_agent_map[agent] in decision_steps_blue) or not fixed_opponent:
-                        action = policies[agent].activate(nn_input[agent])  # FPass for purple and blue
-                    elif fixed_opponent:
-                        action = fixed_policy.activate(nn_input[agent])
-                    actions[agent] = action  # Save action in array of actions
+        # Fetches actions by feed forward pass through the NNs
+        for agent in range(agent_count):  # Iterates through all the agent indexes
+            if local_to_agent_map[agent] in decision_steps_purple or local_to_agent_map[agent] in decision_steps_blue:
+                if local_to_agent_map[agent] in decision_steps_blue or not fixed_opponent:
+                    policy = policies[agent]
+                elif fixed_opponent:
+                    policy = fixed_policy
+
+                actions[agent] = policy.activate(nn_input[agent])
 
         end = time.time()
         time_spent_activating = (end - start)
@@ -260,6 +258,154 @@ def run_agent(genomes, cfg):
     print("\nFinished generation")
 
 
+def run_agent_mapoca(genomes, cfg):
+    """
+    Training with ma poca
+    Population size is configured as 12 to suit the training environment!
+    :param genomes: All the genomes in the current generation.
+    :param cfg: Configuration file
+    :return: Best genome from generation.
+    """
+    # Decision Steps is a list of all agents requesting a decision
+    # Terminal steps is all agents that has reached a terminal state (finished)
+    decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
+    decision_steps = list(decision_steps_purple)
+
+    agent_to_local_map = {}  # For mapping the increasing agent_ids to a interval the same size as number of agents
+    local_to_agent_map = {}  # Mapping local index to agent index
+    id_count = 0
+    for step in decision_steps:
+        agent_to_local_map[step] = id_count
+        local_to_agent_map[id_count] = step
+        id_count += 1
+
+    # Empty array to save all the neural networks for all agents on both teams
+    policies = []
+
+    # Initialize the neural networks for each genome.
+    for i, g in genomes:
+        policy = neat.nn.FeedForwardNetwork.create(g, cfg)
+        policies.append(policy)
+        g.fitness = 0
+
+    print("Genomes: " + str(len(genomes)))
+
+    global generation
+    generation += 1
+    done = False  # For the tracked_agent
+    total_reward = 0.0
+
+    # Agents:
+    agent_count_purple = len(decision_steps_purple.agent_id)
+    agent_count = agent_count_purple
+
+    removed_agents = []
+
+    while not done:
+
+        # Store actions for each agent with 5 actions per agent (3 continuous and 2 discrete)
+        actions = np.zeros(shape=(agent_count, 5))  # 23 in size because of the agent IDs going up to 22.
+
+        # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
+        nn_input = np.zeros(shape=(agent_count, 364))  # 23 in size because of the agent IDs going up to 22.
+
+        for agent in range(agent_count):  # Collect observations from the agents requesting input
+            if local_to_agent_map[agent] in decision_steps_purple:
+                decision_steps = decision_steps_purple
+            else:
+                continue  # Does not exist in any decision steps, run next agent.
+
+            step = decision_steps[local_to_agent_map[agent]]
+            nn_input[agent] = np.concatenate((step.obs[0], step.obs[1], step.obs[3], step.obs[4], step.obs[5]))
+
+        start = time.time()
+
+        # Fetches actions by feed forward pass through the NNs
+        for agent in range(agent_count):  # Iterates through all the agent indexes
+            if local_to_agent_map[agent] in decision_steps_purple:
+                policy = policies[agent]
+
+                actions[agent] = policy.activate(nn_input[agent])
+
+        end = time.time()
+        time_spent_activating = (end - start)
+
+        # Clip discrete values to 0 or 1
+        actions[:, 3] = (actions[:, 3] > 0).astype(int)
+        actions[:, 4] = (actions[:, 4] > 0).astype(int)
+
+        # Set actions for each agent (convert from ndarray to ActionTuple)
+        if len(decision_steps_purple.agent_id) != 0:
+            for agent in range(agent_count):
+                if local_to_agent_map[agent] in decision_steps_purple:  # Is agent ready?
+                    # Creating an action tuple
+                    continuous_actions = [actions[agent, 0:3]]
+                    discrete_actions = [actions[agent, 3:5]]
+                    action_tuple = ActionTuple(discrete=np.array(discrete_actions),
+                                               continuous=np.array(continuous_actions))
+
+                    # Applying the action to respective agents on both teams
+                    if local_to_agent_map[agent] in decision_steps_purple:
+                        env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=local_to_agent_map[agent],
+                                                 action=action_tuple)
+
+        # Move the simulation forward
+        env.step()  # Does not mean 1 step in Unity. Runs until next decision step
+
+        # Get the new simulation results
+        decision_steps_purple, terminal_steps_purple = env.get_steps(behavior_name_purple)
+
+        # Adding agents that has reached terminal steps to removed agents
+        if terminal_steps_purple:
+            for step in terminal_steps_purple:
+                if step not in removed_agents:
+                    removed_agents.append(step)
+
+        # Collect reward
+        for agent in range(agent_count):
+            local_agent = local_to_agent_map[agent]
+            reward = 0
+
+            if local_agent in terminal_steps_purple:
+                reward += terminal_steps_purple[local_agent].reward
+            elif local_agent in decision_steps_purple:
+                reward += decision_steps_purple[local_agent].reward
+
+            genomes[agent][1].fitness += reward
+            total_reward += reward  # Testing purposes (console logging)
+            if reward > 1.9:
+                print(
+                    "Agent: " + str(agent) + " Fitness: " + str(genomes[agent][1].fitness) + " Reward: " + str(
+                        reward))
+
+        # When whole teams are eliminated, end the generation. Should not be less than half the players left
+        if len(removed_agents) >= agent_count:
+            print(".")  # Fix print last status before things are reset
+            done = True
+
+        # If statement is just there to avoid printing out 0 but doesnt work lol
+        if not len(decision_steps_purple) == 0:
+            # Reward status
+            sys.stdout.write(
+                "\rCollective reward: %.2f | Purple left: %d | Activation Time: %.2f" % (total_reward,
+                                                                                         len(decision_steps_purple),
+                                                                                         time_spent_activating))
+            sys.stdout.flush()
+
+    # Save the best genome from this generation:
+    global best_genome_current_generation
+    best_genome_current_generation = max(genomes, key=lambda x: x[1].fitness)  # Save the best genome from this gen
+
+    # Save training progress regularely
+    if generation % save_interval == 0:
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg")
+
+    # Clean the environment for a new generation.
+    env.reset()
+    print("\nFinished generation")
+
+
 def run_agent_sim(genome, cfg):
     """
     Population size is configured as 12 to suit the training environment!
@@ -282,12 +428,12 @@ def run_agent_sim(genome, cfg):
 
         while not done:
             # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
-            nn_input = np.concatenate((decision_steps[0].obs[0],
-                                       decision_steps[0].obs[1],
-                                       decision_steps[0].obs[3],
-                                       decision_steps[0].obs[4],
-                                       decision_steps[0].obs[5]))
-
+            nn_input = np.concatenate((decision_steps[decision_steps[0].agent_id].obs[0],
+                                       decision_steps[decision_steps[0].agent_id].obs[1],
+                                       decision_steps[decision_steps[0].agent_id].obs[3],
+                                       decision_steps[decision_steps[0].agent_id].obs[4],
+                                       decision_steps[decision_steps[0].agent_id].obs[5]))
+            # print(nn_input)
             action = np.zeros(shape=364)  # Init
             # Checks if the
             if len(decision_steps) > 0:  # More steps to take?
@@ -307,7 +453,8 @@ def run_agent_sim(genome, cfg):
                 action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
 
                 # Applying the action
-                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=0, action=action_tuple)
+                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=decision_steps[0].agent_id,
+                                         action=action_tuple)
 
             # Move the simulation forward
             env.step()
@@ -350,7 +497,8 @@ if __name__ == "__main__":
                 fixed_policy = neat.nn.FeedForwardNetwork.create(fixed_genome, config)
 
         # Run NEAT
-        best_genome = p.run(run_agent, max_generations)
+        evaluation = run_agent_mapoca if ma_poca_opp else run_agent
+        best_genome = p.run(evaluation, max_generations)
 
         # Save best genome.
         with open(save_genome_dest, 'wb') as f:
