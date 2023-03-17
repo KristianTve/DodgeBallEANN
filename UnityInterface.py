@@ -12,23 +12,23 @@ import time
 
 # Boolean Toggles
 built_game = False  # Is the game built into a .exe or .app
-sim_1_agent = False  # Test out a given genome specified in main.
+sim_1_agent = True  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
-load_from_checkpoint = True  # Load from checkpoint
-fixed_opponent = True  # Boolean toggle for fixed opponent
+load_from_checkpoint = False  # Load from checkpoint
+fixed_opponent = False  # Boolean toggle for fixed opponent
 ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
 max_generations = 100  # Max number of generations
 save_interval = 25
-checkpoint = "checkpoints/NEAT-checkpoint-381"  # Checkpoint name
-genome_to_load = 'result/3022gen/best_genome.pkl'  # Genome name
+checkpoint = "checkpoints/NEAT-checkpoint-3014"  # Checkpoint name
+genome_to_load = 'result/NewParams100/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
 fixed_policy = None  # The actual fixed policy
 best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
 
 if built_game:
-    env = UE(seed=1, worker_id=5, side_channels=[], file_name="Builds/144AgentsBush/DodgeBallEnv.exe")
+    env = UE(seed=1, worker_id=5, side_channels=[], file_name="Builds/72MA-POCA/DodgeBallEnv.exe")
 else:
     env = UE(seed=1, side_channels=[])
 
@@ -250,8 +250,8 @@ def run_agent(genomes, cfg):
     # Save training progress regularely
     if generation % save_interval == 0:
         print("\nSAVED PLOTS | GENERATION " + str(generation))
-        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg")
-        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg")
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
 
     # Clean the environment for a new generation.
     env.reset()
@@ -398,8 +398,8 @@ def run_agent_mapoca(genomes, cfg):
 
     # Save training progress regularely
     if generation % save_interval == 0:
-        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg")
-        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg")
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
 
     # Clean the environment for a new generation.
     env.reset()
@@ -424,21 +424,21 @@ def run_agent_sim(genome, cfg):
         done = False  # For the tracked_agent
 
         # Agents:
-        agent_count = len(decision_steps.agent_id)  # 12
+        agent_count = len(decision_steps.agent_id)
+        agent_id = list(decision_steps)[0]
 
         while not done:
             # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
-            nn_input = np.concatenate((decision_steps[decision_steps[0].agent_id].obs[0],
-                                       decision_steps[decision_steps[0].agent_id].obs[1],
-                                       decision_steps[decision_steps[0].agent_id].obs[3],
-                                       decision_steps[decision_steps[0].agent_id].obs[4],
-                                       decision_steps[decision_steps[0].agent_id].obs[5]))
+            nn_input = np.concatenate((decision_steps[agent_id].obs[0],
+                                       decision_steps[agent_id].obs[1],
+                                       decision_steps[agent_id].obs[3],
+                                       decision_steps[agent_id].obs[4],
+                                       decision_steps[agent_id].obs[5]))
             # print(nn_input)
             action = np.zeros(shape=364)  # Init
             # Checks if the
             if len(decision_steps) > 0:  # More steps to take?
-                if 0 in decision_steps:
-                    action = policy.activate(nn_input)  # FPass for purple action
+                action = policy.activate(nn_input)  # FPass for purple action
 
             # Clip discrete values to 0 or 1
             for agent in range(agent_count):
@@ -446,20 +446,23 @@ def run_agent_sim(genome, cfg):
                 action[4] = 1 if action[4] > 0 else 0  # DASH
 
             # Set actions for each agent (convert from ndarray to ActionTuple)
-            if len(decision_steps.agent_id) != 0:
+            if len(decision_steps) > 0:
                 # Creating an action tuple
                 continuous_actions = [action[0:3]]
                 discrete_actions = [action[3:5]]
                 action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
 
                 # Applying the action
-                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=decision_steps[0].agent_id,
+                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=agent_id,
                                          action=action_tuple)
 
             # Move the simulation forward
             env.step()
 
             decision_steps, terminal_steps = env.get_steps(behavior_name_purple)
+
+            if len(decision_steps) > 0:
+                agent_id = list(decision_steps)[0]
 
             # When whole teams are eliminated, end the generation.
             if len(decision_steps) == 0:
@@ -506,8 +509,8 @@ if __name__ == "__main__":
 
         print(best_genome)
 
-        visualize.plot_stats(stats, view=True, filename="result/feedforward-fitness.svg")
-        visualize.plot_species(stats, view=True, filename="result/feedforward-speciation.svg")
+        visualize.plot_stats(stats, view=True, filename="result/feedforward-fitness.svg", label="ANN")
+        visualize.plot_species(stats, view=True, filename="result/feedforward-speciation.svg", label="ANN")
 
         node_names = {-1: 'x', -2: 'dx', -3: 'theta', -4: 'dtheta', 0: 'control'}
         visualize.draw_net(config, best_genome, True, node_names=node_names)

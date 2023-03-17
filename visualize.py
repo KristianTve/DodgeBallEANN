@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg'):
+def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg', label=""):
     """ Plots the population's average and best fitness. """
     if plt is None:
         warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
@@ -21,7 +21,7 @@ def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg'):
     plt.plot(generation, avg_fitness + stdev_fitness, 'g-.', label="+1 sd")
     plt.plot(generation, best_fitness, 'r-', label="best")
 
-    plt.title("Population's average and best fitness")
+    plt.title("["+label+"] - Population's average and best fitness")
     plt.xlabel("Generations")
     plt.ylabel("Fitness")
     plt.grid()
@@ -85,7 +85,7 @@ def plot_spikes(spikes, view=False, filename=None, title=None):
     return fig
 
 
-def plot_species(statistics, view=False, filename='speciation.svg'):
+def plot_species(statistics, view=False, filename='speciation.svg', label=""):
     """ Visualizes speciation throughout evolution. """
     if plt is None:
         warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
@@ -98,7 +98,7 @@ def plot_species(statistics, view=False, filename='speciation.svg'):
     fig, ax = plt.subplots()
     ax.stackplot(range(num_generations), *curves)
 
-    plt.title("Speciation")
+    plt.title("["+label+"] - Speciation")
     plt.ylabel("Size per Species")
     plt.xlabel("Generations")
 
