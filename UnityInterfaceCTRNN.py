@@ -254,6 +254,8 @@ def run_agent(genomes, cfg):
         print("\nSAVED PLOTS | GENERATION " + str(generation))
         visualize.plot_stats(stats, view=True, filename="result/ctrnn/in_progress/recurrent-fitness.svg", label="CTRNN")
         visualize.plot_species(stats, view=True, filename="result/ctrnn/in_progress/recurrent-speciation.svg", label="CTRNN")
+        with open('result/ctrnn/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
+            pickle.dump(best_genome_current_generation, f)
 
     # Clean the environment for a new generation.
     env.reset()
@@ -402,6 +404,8 @@ def run_agent_mapoca(genomes, cfg):
     if generation % save_interval == 0:
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="CTRNN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="CTRNN")
+        with open('result/ctrnn/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
+            pickle.dump(best_genome_current_generation, f)
 
     # Clean the environment for a new generation.
     env.reset()
