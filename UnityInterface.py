@@ -11,8 +11,8 @@ import atexit
 import time
 
 # Boolean Toggles
-built_game = False  # Is the game built into a .exe or .app
-sim_1_agent = True  # Test out a given genome specified in main.
+built_game = True  # Is the game built into a .exe or .app
+sim_1_agent = False  # Test out a given genome specified in main.
 show_prints = True  # Show certain prints during runtime
 load_from_checkpoint = False  # Load from checkpoint
 fixed_opponent = False  # Boolean toggle for fixed opponent
@@ -20,10 +20,11 @@ ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
 max_generations = 100  # Max number of generations
-save_interval = 25
+save_interval = 3
 checkpoint = "checkpoints/NEAT-checkpoint-3014"  # Checkpoint name
 genome_to_load = 'result/NewParams100/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
+save_training_progress_prefix = 'result/fitness/'
 fixed_policy = None  # The actual fixed policy
 best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
 
@@ -67,6 +68,13 @@ def exit_handler():
 
 
 atexit.register(exit_handler)
+
+
+# Save training progress to files
+def save_progress(statistics):
+    statistics.save_genome_fitness(filename=save_training_progress_prefix+"genome_fitness.csv")
+    statistics.save_species_count(filename=save_training_progress_prefix+"species_count.csv")
+    statistics.save_species_fitness(filename=save_training_progress_prefix+"species_fitness.csv")
 
 
 def run_agent(genomes, cfg):
@@ -252,6 +260,7 @@ def run_agent(genomes, cfg):
         print("\nSAVED PLOTS | GENERATION " + str(generation))
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
+        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()
@@ -400,6 +409,7 @@ def run_agent_mapoca(genomes, cfg):
     if generation % save_interval == 0:
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
+        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()

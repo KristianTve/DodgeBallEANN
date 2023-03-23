@@ -20,10 +20,11 @@ ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
 max_generations = 100  # Max number of generations
-save_interval = 25
+save_interval = 3
 checkpoint = "checkpoints/ctrnn/NEAT-checkpoint-2737"  # Checkpoint name
 genome_to_load = 'result/ctrnn/3rd700/best_genome.pkl'  # Genome name (challenge)
 save_genome_dest = 'result/ctrnn/best_genome.pkl'  # Save destination once the algorithm finishes
+save_training_progress_prefix = 'result/ctrnn/fitness/'
 fixed_policy = None  # The actual fixed policy
 best_genome_current_generation = None  # Continually saving the best genome for training progress when exiting
 
@@ -67,6 +68,13 @@ def exit_handler():
 
 
 atexit.register(exit_handler)
+
+
+# Save training progress to files
+def save_progress(statistics):
+    statistics.save_genome_fitness(filename=save_training_progress_prefix+"genome_fitness.csv")
+    statistics.save_species_count(filename=save_training_progress_prefix+"species_count.csv")
+    statistics.save_species_fitness(filename=save_training_progress_prefix+"species_fitness.csv")
 
 
 def run_agent(genomes, cfg):
@@ -254,6 +262,7 @@ def run_agent(genomes, cfg):
         print("\nSAVED PLOTS | GENERATION " + str(generation))
         visualize.plot_stats(stats, view=True, filename="result/ctrnn/in_progress/recurrent-fitness.svg", label="CTRNN")
         visualize.plot_species(stats, view=True, filename="result/ctrnn/in_progress/recurrent-speciation.svg", label="CTRNN")
+        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()
@@ -402,6 +411,7 @@ def run_agent_mapoca(genomes, cfg):
     if generation % save_interval == 0:
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="CTRNN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="CTRNN")
+        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()
