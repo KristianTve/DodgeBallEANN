@@ -20,7 +20,7 @@ ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
 max_generations = 100  # Max number of generations
-save_interval = 3
+save_interval = 25
 checkpoint = "checkpoints/NEAT-checkpoint-3014"  # Checkpoint name
 genome_to_load = 'result/NewParams100/best_genome.pkl'  # Genome name
 save_genome_dest = 'result/best_genome.pkl'  # Save destination once the algorithm finishes
@@ -260,7 +260,6 @@ def run_agent(genomes, cfg):
         print("\nSAVED PLOTS | GENERATION " + str(generation))
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
-        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()
@@ -409,7 +408,6 @@ def run_agent_mapoca(genomes, cfg):
     if generation % save_interval == 0:
         visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
         visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
-        save_progress(stats)
 
     # Clean the environment for a new generation.
     env.reset()
