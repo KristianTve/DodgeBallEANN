@@ -260,8 +260,8 @@ def run_agent(genomes, cfg):
     # Save training progress regularely
     if generation % save_interval == 0:
         print("\nSAVED PLOTS | GENERATION " + str(generation))
-        visualize.plot_stats(stats, view=True, filename="result/ctrnn/in_progress/recurrent-fitness.svg", label="CTRNN")
-        visualize.plot_species(stats, view=True, filename="result/ctrnn/in_progress/recurrent-speciation.svg", label="CTRNN")
+        visualize.plot_stats(stats, view=True, filename="result/ctrnn/in_progress/recurrent-fitness"+str(generation)+".svg", label="CTRNN")
+        visualize.plot_species(stats, view=True, filename="result/ctrnn/in_progress/recurrent-speciation"+str(generation)+".svg", label="CTRNN")
         save_progress(stats)
         with open('result/ctrnn/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
             pickle.dump(best_genome_current_generation, f)
@@ -411,8 +411,8 @@ def run_agent_mapoca(genomes, cfg):
 
     # Save training progress regularely
     if generation % save_interval == 0:
-        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="CTRNN")
-        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="CTRNN")
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness"+str(generation)+".svg", label="CTRNN")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation"+str(generation)+".svg", label="CTRNN")
         save_progress(stats)
         with open('result/ctrnn/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
             pickle.dump(best_genome_current_generation, f)

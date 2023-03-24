@@ -258,12 +258,12 @@ def run_agent(genomes, cfg):
     # Save training progress regularely
     if generation % save_interval == 0:
         print("\nSAVED PLOTS | GENERATION " + str(generation))
-        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
-        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness"+str(generation)+".svg", label="ANN")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation"+str(generation)+".svg", label="ANN")
         save_progress(stats)
         with open('result/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
             pickle.dump(best_genome_current_generation, f)
-            
+
     # Clean the environment for a new generation.
     env.reset()
     print("\nFinished generation")
@@ -409,8 +409,8 @@ def run_agent_mapoca(genomes, cfg):
 
     # Save training progress regularely
     if generation % save_interval == 0:
-        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness.svg", label="ANN")
-        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation.svg", label="ANN")
+        visualize.plot_stats(stats, view=True, filename="result/in_progress/feedforward-fitness"+str(generation)+".svg", label="ANN")
+        visualize.plot_species(stats, view=True, filename="result/in_progress/feedforward-speciation"+str(generation)+".svg", label="ANN")
         save_progress(stats)
         with open('result/in_progress/best_genome'+str(generation)+'.pkl', 'wb') as f:
             pickle.dump(best_genome_current_generation, f)
