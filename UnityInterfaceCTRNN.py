@@ -11,18 +11,18 @@ import atexit
 import time
 
 # Boolean Toggles
-built_game = True  # Is the game built into a .exe or .app
-sim_1_agent = False  # Test out a given genome specified below.
+built_game = False  # Is the game built into a .exe or .app
+sim_1_agent = True  # Test out a given genome specified below.
 show_prints = True  # Show certain prints during runtime
-load_from_checkpoint = False  # Load from checkpoint
+load_from_checkpoint = True  # Load from checkpoint
 fixed_opponent = False  # Boolean toggle for fixed opponent
 ma_poca_opp = True  # Run training against ma-poca?
 
 # Variables
-max_generations = 100  # Max number of generations
+max_generations = 1  # Max number of generations
 save_interval = 25
-checkpoint = "checkpoints/ctrnn/NEAT-checkpoint-2737"  # Checkpoint name
-genome_to_load = 'result/ctrnn/3rd700/best_genome.pkl'  # Genome name (challenge)
+checkpoint = "checkpoints/NEAT-checkpoint-2526"  # Checkpoint name
+genome_to_load = 'result/test/best_genome2500.pkl'  # Genome name (challenge)
 save_genome_dest = 'result/ctrnn/best_genome.pkl'  # Save destination once the algorithm finishes
 save_training_progress_prefix = 'result/ctrnn/fitness/'
 fixed_policy = None  # The actual fixed policy
@@ -36,6 +36,7 @@ else:
 env.reset()  # Resets the environment ready for the next simulation
 
 behavior_name_purple = list(env.behavior_specs)[0]
+print(list(env.behavior_specs))
 if len(list(env.behavior_specs)) > 1:
     behavior_name_blue = list(env.behavior_specs)[1]
     spec_blue = env.behavior_specs[behavior_name_blue]
@@ -440,42 +441,44 @@ def run_agent_sim(genome, cfg):
         done = False  # For the tracked_agent
 
         # Agents:
-        agent_count = len(decision_steps.agent_id)  # 12
+        agent_count = len(decision_steps.agent_id)
+        agent_id = list(decision_steps)[0]
 
         while not done:
             # Concatenate all the observation data BESIDES obs number 3 (OtherAgentsData)
-            nn_input = np.concatenate((decision_steps[0].obs[0],
-                                       decision_steps[0].obs[1],
-                                       decision_steps[0].obs[3],
-                                       decision_steps[0].obs[4],
-                                       decision_steps[0].obs[5]))
-
+            nn_input = np.concatenate((decision_steps[agent_id].obs[0],
+                                       decision_steps[agent_id].obs[1],
+                                       decision_steps[agent_id].obs[3],
+                                       decision_steps[agent_id].obs[4],
+                                       decision_steps[agent_id].obs[5]))
+            # print(nn_input)
             action = np.zeros(shape=364)  # Init
             # Checks if the
             if len(decision_steps) > 0:  # More steps to take?
-                if 0 in decision_steps:
-                    action = policy.activate(nn_input)  # FPass for purple action
+                action = policy.activate(nn_input)  # FPass for purple action
 
             # Clip discrete values to 0 or 1
-            for agent in range(agent_count):
-                action[3] = 1 if action[3] > 0 else 0  # Shoot
-                action[4] = 1 if action[4] > 0 else 0  # DASH
-
+            action[3] = 1 if action[3] > 0 else 0  # Shoot
+            action[4] = 1 if action[4] > 0 else 0  # DASH
 
             # Set actions for each agent (convert from ndarray to ActionTuple)
-            if len(decision_steps.agent_id) != 0:
+            if len(decision_steps) > 0:
                 # Creating an action tuple
                 continuous_actions = [action[0:3]]
                 discrete_actions = [action[3:5]]
                 action_tuple = ActionTuple(discrete=np.array(discrete_actions), continuous=np.array(continuous_actions))
 
                 # Applying the action
-                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=0, action=action_tuple)
+                env.set_action_for_agent(behavior_name=behavior_name_purple, agent_id=agent_id,
+                                         action=action_tuple)
 
             # Move the simulation forward
             env.step()
 
             decision_steps, terminal_steps = env.get_steps(behavior_name_purple)
+
+            if len(decision_steps) > 0:
+                agent_id = list(decision_steps)[0]
 
             # When whole teams are eliminated, end the generation.
             if len(decision_steps) == 0:
@@ -509,7 +512,7 @@ if __name__ == "__main__":
         if fixed_opponent:
             # Play against fixed challenge:
             with open(genome_to_load, "rb") as f:
-                fixed_genome = pickle.load(f)
+                fixed_genome = pickle.load(f)[1]
                 fixed_policy = neat.nn.RecurrentNetwork.create(fixed_genome, config)
 
         # Run NEAT
@@ -537,6 +540,7 @@ if __name__ == "__main__":
 
     else:
         with open(genome_to_load, "rb") as f:
-            genome = pickle.load(f)
+            genome = pickle.load(f)[1]
+        print(genome.fitness)
 
         run_agent_sim(genome, config)
