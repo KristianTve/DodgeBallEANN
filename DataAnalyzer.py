@@ -18,7 +18,7 @@ class DataAnalyzer:
         seconds = self.df.elapsed_time.max()
         minutes = int(seconds / 60)
         rest_seconds = seconds % 60
-        print(str(seconds) + " seconds (" + str(minutes) + " min " + str(round(rest_seconds, 2)) + " seconds)")
+        print("TOTAL TIME OF LOG: "+str(seconds) + " seconds (" + str(minutes) + " min " + str(round(rest_seconds, 2)) + " seconds)\n")
 
     def clean_data(self):
         """
@@ -70,15 +70,75 @@ class DataAnalyzer:
         # show the plot
         plt.show()
 
+    def elapsed_time(self, column="PlayerLives"):
+        # Create a boolean mask where LivesLeft equals 3
+        if column == "Corner":
+            text = "condition happens"
+        elif column == "PlayerLives":
+            text = "is equal to 3"
+        elif column == "EnemyLives":
+            text = "is equal to 3"
+        elif column == "BallsLeft":
+            text = "is equal to 4"
+        else:
+            text = "is something"
+
+        def logic_op(row, boolean_mode):
+            if boolean_mode == True:
+                if column == "PlayerLives":     # Duration the player had 3 lives
+                    return True if row[column] == 3 else False
+                if column == "Corner":          # Duration opponent spent in the corner
+                    return True if row[column] > 0 else False
+                if column == "BallsLeft":       # Duration player had 4 balls
+                    return True if row[column] == 4 else False
+                if column == "EnemyLives":       # Duration enemy had 3 lives
+                    return True if row[column] == 3 else False
+            else:
+                if column == "PlayerLives":     # Duration the player had 3 lives
+                    return True if row[column] != 3 else False
+                if column == "Corner":          # Duration opponent spent in the corner
+                    return True if row[column] == 0 else False
+                if column == "BallsLeft":       # Duration player had 4 balls
+                    return True if row[column] != 4 else False
+                if column == "EnemyLives":       # Duration enemy had 3 lives
+                    return True if row[column] != 3 else False
+
+        # Loop through DataFrame and calculate duration of each sequence of LivesLeft being 3
+        in_sequence = False
+        sequence_start = None
+        total_duration = pd.Timedelta(0)
+        for i, row in self.df.iterrows():
+            if logic_op(row, True) and not in_sequence:
+                # Start of new sequence
+                in_sequence = True
+                sequence_start = row['Timestamp']
+            elif logic_op(row, False) and in_sequence:
+                # End of sequence
+                in_sequence = False
+                sequence_end = row['Timestamp']
+                sequence_duration = sequence_end - sequence_start
+                total_duration += sequence_duration
+
+        print(f'Total seconds that '+str(column)+' '+text+': '+str(total_duration.total_seconds()))
+
 
 if __name__ == "__main__":
     da = DataAnalyzer()
     da.read_data()
     da.clean_data()
     da.print_duration()
+
     # da.print_data()
     # da.print_corner()
+
     da.plot(columns=['BallsLeft'])
     da.plot(columns=['PlayerLives'])
     da.plot(columns=['EnemyLives'])
     da.plot(columns=['Corner'])
+
+    # Elapsed time prints (total duration a given field is a given condition)
+    da.elapsed_time(column="Corner")
+    da.elapsed_time(column="PlayerLives")
+    da.elapsed_time(column="EnemyLives")
+    da.elapsed_time(column="BallsLeft")
+
