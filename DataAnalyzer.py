@@ -9,7 +9,7 @@ class DataAnalyzer:
         self.df = None
 
     def read_data(self):
-        self.df = pd.read_csv("GameLog.txt")
+        self.df = pd.read_csv("GameLogNEAT.txt")
 
     def print_data(self):
         print(self.df)
@@ -31,7 +31,7 @@ class DataAnalyzer:
 
         # Find S elapsed time
         s_elapsed = self.df.loc[self.df.EventType == "S", "Timestamp"].min()
-        
+
         # Select subset of DataFrame where Timestamp is greater than or equal to s_elapsed
         self.df = self.df[self.df['Timestamp'] >= s_elapsed]
 
@@ -48,14 +48,16 @@ class DataAnalyzer:
         if columns is None:
             columns = ['BallsLeft', 'PlayerLives', 'EnemyLives', 'Corner']
 
+        df_copy = self.df.copy()
+
         # set the TimeStamp column as the index
-        self.df.set_index('elapsed_time', inplace=True)
+        df_copy.set_index('elapsed_time', inplace=True)
 
         # create the figure and axes objects
         fig, ax = plt.subplots()
 
         # plot the BallsLeft, PlayerLives, EnemyLives, and Corner columns
-        self.df[columns].plot(ax=ax)
+        df_copy[columns].plot(ax=ax)
 
         # set the title and labels for the plot
         if len(columns) == 1:
@@ -76,7 +78,7 @@ if __name__ == "__main__":
     da.print_duration()
     # da.print_data()
     # da.print_corner()
-    # da.plot(columns=['BallsLeft'])
-    # da.plot(columns=['PlayerLives'])
-    # da.plot(columns=['EnemyLives'])
+    da.plot(columns=['BallsLeft'])
+    da.plot(columns=['PlayerLives'])
+    da.plot(columns=['EnemyLives'])
     da.plot(columns=['Corner'])
