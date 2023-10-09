@@ -4,3 +4,5 @@ mlagents_envs==0.30.0
 neat_python==0.92
 numpy==1.21.2
 onnx==1.13.0
+
+pandas~=1.5.3

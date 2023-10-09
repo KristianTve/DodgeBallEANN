@@ -1,15 +1,26 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-
+import sys
+import os
 
 class DataAnalyzer:
 
     def __init__(self):
         self.df = None
+        args = sys.argv[1:]
+        self.folder_path = args[0]
+        self.filename = ""
 
     def read_data(self):
-        self.df = pd.read_csv("GameLogNEAT.txt")
+        self.df = pd.read_csv(self.folder_path+self.filename)
+
+    def save_data(self):
+        file_dest = self.folder_path+"clean/"
+        if not os.path.exists(file_dest):
+            os.makedirs(file_dest)
+        print(file_dest+self.filename)
+        self.df.to_csv(path_or_buf=file_dest+self.filename)
 
     def print_data(self):
         print(self.df)
@@ -37,6 +48,20 @@ class DataAnalyzer:
 
         # Elapsed time column
         self.df['elapsed_time'] = (self.df['Timestamp'] - self.df['Timestamp'].min()).dt.total_seconds()
+
+        # Remove old timestamp
+        self.df = self.df.drop(['Timestamp'], axis=1)
+
+        # Move elapsed to start.-----------------
+        # Get the last column using iloc
+        last_column = self.df.iloc[:, -1]
+
+        # Remove the last column from the DataFrame
+        self.df = self.df.iloc[:, :-1]
+
+        # Concatenate the last column to the front of the DataFrame
+        self.df = pd.concat([last_column, self.df], axis=1)
+
 
     def print_corner(self):
         corner_points = self.df[self.df.Corner != 0]
@@ -124,21 +149,31 @@ class DataAnalyzer:
 
 if __name__ == "__main__":
     da = DataAnalyzer()
-    da.read_data()
-    da.clean_data()
-    da.print_duration()
+
+    # Iterate over all files in the folder
+    for filename in os.listdir(da.folder_path):
+        # Check if the item is a file (as opposed to a directory)
+        if os.path.isfile(os.path.join(da.folder_path, filename)):
+            # Print the name of the file
+            da.filename = filename
+            da.read_data()
+            da.clean_data()
+            #da.print_duration()
+            da.save_data()
+
+
 
     # da.print_data()
     # da.print_corner()
 
-    da.plot(columns=['BallsLeft'])
-    da.plot(columns=['PlayerLives'])
-    da.plot(columns=['EnemyLives'])
-    da.plot(columns=['Corner'])
+    #da.plot(columns=['BallsLeft'])
+    #da.plot(columns=['PlayerLives'])
+    #da.plot(columns=['EnemyLives'])
+    #da.plot(columns=['Corner'])
 
     # Elapsed time prints (total duration a given field is a given condition)
-    da.elapsed_time(column="Corner")
-    da.elapsed_time(column="PlayerLives")
-    da.elapsed_time(column="EnemyLives")
-    da.elapsed_time(column="BallsLeft")
+    #da.elapsed_time(column="Corner")
+    #da.elapsed_time(column="PlayerLives")
+    #da.elapsed_time(column="EnemyLives")
+    #da.elapsed_time(column="BallsLeft")
 
